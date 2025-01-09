@@ -2,125 +2,92 @@ package main
 import "core:c"
 import "core:fmt"
 
+import im "odin-imgui"
+import "odin-imgui/imgui_impl_glfw"
+import "odin-imgui/imgui_impl_opengl3"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
+
+// https://gitlab.com/L-4/odin-imgui/-/blob/main/examples/glfw_opengl3/main.odin?ref_type=heads
 // https://gist.github.com/SorenSaket/155afe1ec11a79def63341c588ade329
 
-
-PROGRAM_NAME :: "TestTestTest"
-GL_MAJOR_VERSION: c.int : 4
-GL_MINOR_VERSION :: 6
-running: b32 = true
+DISABLE_DOCKING :: #config(DISABLE_DOCKING, false)
+GL_MAJOR_VERSION :: 3
+GL_MINOR_VERSION :: 2
 
 main :: proc() {
+	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
+	defer glfw.Terminate()
+
 	// Set Window Hints
-	// https://www.glfw.org/docs/3.3/window_guide.html#window_hints
-	// https://www.glfw.org/docs/3.3/group__window.html#ga7d9c8c62384b1e2821c4dc48952d2033
-	glfw.WindowHint(glfw.RESIZABLE, 1)
+	// https://www.glfw.org/docs/latest/window_guide.html#window_hints
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_MAJOR_VERSION)
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_MINOR_VERSION)
 	glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+	glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, 1)
+	glfw.WindowHint(glfw.RESIZABLE, 1)
 
-	// https://www.glfw.org/docs/latest/group__init.html#ga317aac130a235ab08c6db0834907d85e
-	if (!glfw.Init()) {
-		// Print Line
-		fmt.println("Failed to initialize GLFW")
-		// Return early
-		return
-	}
-	// https://www.glfw.org/docs/3.1/group__init.html#gaaae48c0a18607ea4a4ba951d939f0901
-	defer glfw.Terminate()
-
-	// Create the window
-	// Return WindowHandle rawPtr
-	// https://www.glfw.org/docs/3.3/group__window.html#ga3555a418df92ad53f917597fe2f64aeb
-	window := glfw.CreateWindow(512, 512, PROGRAM_NAME, nil, nil)
-	// https://www.glfw.org/docs/latest/group__window.html#gacdf43e51376051d2c091662e9fe3d7b2
+	window := glfw.CreateWindow(640, 800, "Test", nil, nil)
+	assert(window != nil, "Failed to create window")
 	defer glfw.DestroyWindow(window)
-
-	// If the window pointer is invalid
-	if window == nil {
-		fmt.println("Unable to create window")
-		return
-	}
-
-	//
-	// https://www.glfw.org/docs/3.3/group__context.html#ga1c04dc242268f827290fe40aa1c91157
 	glfw.MakeContextCurrent(window)
+	glfw.SwapInterval(1) // vsync
 
-	// Enable vsync
-	// https://www.glfw.org/docs/3.3/group__context.html#ga6d4e0cdf151b5e579bd67f13202994ed
-	glfw.SwapInterval(1)
+	gl.load_up_to(GL_MAJOR_VERSION, GL_MINOR_VERSION, proc(p: rawptr, name: cstring) {
+		(cast(^rawptr)p)^ = glfw.GetProcAddress(name)
+	})
 
-	// Called when glfw keystate changes
-	key_callback :: proc "c" (window: glfw.WindowHandle, key, scancode, action, mods: i32) {
-		if key == glfw.KEY_ESCAPE {
-			running = false
-		}
+	im.CHECKVERSION()
+	im.CreateContext()
+	defer im.DestroyContext()
+	io := im.GetIO()
+	io.ConfigFlags += {.NavEnableKeyboard, .NavEnableGamepad}
+
+	when !DISABLE_DOCKING {
+		io.ConfigFlags += {.DockingEnable}
+		io.ConfigFlags += {.ViewportsEnable}
+
+		style := im.GetStyle()
+		style.WindowRounding = 0
+		style.Colors[im.Col.WindowBg].w = 1
 	}
-	// https://www.glfw.org/docs/3.3/group__input.html#ga1caf18159767e761185e49a3be019f8d
-	glfw.SetKeyCallback(window, key_callback)
 
+	im.StyleColorsDark()
+	assert(imgui_impl_glfw.InitForOpenGL(window, true), "Failed to initialize ImGui GLFW")
+	defer imgui_impl_glfw.Shutdown()
+	assert(imgui_impl_opengl3.Init("#version 150"), "Failed to initialize ImGui OpenGL3")
+	defer imgui_impl_opengl3.Shutdown()
 
-	// Called when glfw window changes size
-	size_callback :: proc "c" (window: glfw.WindowHandle, width, height: i32) {
-		// Set the OpenGL viewport size
-		gl.Viewport(0, 0, width, height)
-	}
-	// This function sets the framebuffer resize callback of the specified window, which is called when the framebuffer of the specified window is resized.
-	// https://www.glfw.org/docs/3.3/group__window.html#gab3fb7c3366577daef18c0023e2a8591f
-	glfw.SetFramebufferSizeCallback(window, size_callback)
-
-	// Set OpenGL Context bindings using the helper function
-	// See Odin Vendor source for specifc implementation details
-	// https://github.com/odin-lang/Odin/tree/master/vendor/OpenGL
-	// https://www.glfw.org/docs/3.3/group__context.html#ga35f1837e6f666781842483937612f163
-
-	// casting the c.int to int
-	// This is needed because the GL_MAJOR_VERSION has an explicit type of c.int
-	gl.load_up_to(int(GL_MAJOR_VERSION), GL_MINOR_VERSION, glfw.gl_set_proc_address)
-
-	init()
-
-	// There is only one kind of loop in Odin called for
-	// https://odin-lang.org/docs/overview/#for-statement
-	for (!glfw.WindowShouldClose(window) && running) {
-		// Process waiting events in queue
-		// https://www.glfw.org/docs/3.3/group__window.html#ga37bd57223967b4211d60ca1a0bf3c832
+	for !glfw.WindowShouldClose(window) {
 		glfw.PollEvents()
 
-		update()
-		draw()
+		imgui_impl_opengl3.NewFrame()
+		imgui_impl_glfw.NewFrame()
+		im.NewFrame()
 
-		// This function swaps the front and back buffers of the specified window.
-		// See https://en.wikipedia.org/wiki/Multiple_buffering to learn more about Multiple buffering
-		// https://www.glfw.org/docs/3.0/group__context.html#ga15a5a1ee5b3c2ca6b15ca209a12efd14
-		glfw.SwapBuffers((window))
+		// im.ShowDemoWindow()
+
+		if im.Begin("Window containing a quit button") {
+			if im.Button("quit me!") {
+				glfw.SetWindowShouldClose(window, true)
+			}
+		}
+		im.End()
+
+		im.Render()
+		display_w, display_h := glfw.GetFramebufferSize(window)
+		gl.Viewport(0, 0, display_w, display_h)
+		gl.ClearColor(0, 0, 0, 1)
+		gl.Clear(gl.COLOR_BUFFER_BIT)
+		imgui_impl_opengl3.RenderDrawData(im.GetDrawData())
+
+		when !DISABLE_DOCKING {
+			backup_current_window := glfw.GetCurrentContext()
+			im.UpdatePlatformWindows()
+			im.RenderPlatformWindowsDefault()
+			glfw.MakeContextCurrent(backup_current_window)
+		}
+
+		glfw.SwapBuffers(window)
 	}
-
-	exit()
-
-}
-
-
-init :: proc() {
-	// Own initialization code there
-}
-
-update :: proc() {
-	// Own update code here
-}
-
-draw :: proc() {
-	// Set the opengl clear color
-	// 0-1 rgba values
-	gl.ClearColor(0.2, 0.3, 0.3, 1.0)
-	// Clear the screen with the set clearcolor
-	gl.Clear(gl.COLOR_BUFFER_BIT)
-
-	// Own drawing code here
-}
-
-exit :: proc() {
-	// Own termination code here
 }

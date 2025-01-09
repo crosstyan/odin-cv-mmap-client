@@ -36,3 +36,32 @@ Visual Studio Code for example:
   "ols.server.path": "/opt/odin/ols"
 }
 ```
+
+## ImGui
+
+```bash
+cd odin-imgui
+# if ply is not installed
+python -m pip install ply
+python build.py
+```
+
+make sure you have access to git
+Otherwise you might need to put the sources in `backend_deps` manually
+
+```text
+./odin-imgui
+├── backend_deps
+│   ├── glfw
+│   ├── SDL2
+│   ├── Vulkan-Headers
+│   └── webgpu-headers
+├── build.py
+```
+
+### `libc++`
+
+Requires `libc++` to be installed on your system.
+
+[libc++](https://archlinux.org/packages/extra/x86_64/libc++/) in Arch Linux
+
