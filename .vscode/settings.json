@@ -1,6 +1,9 @@
 {
   "cSpell.words": [
+    "comptime",
     "Hellope",
-    "println"
+    "printfln",
+    "println",
+    "rawptr"
   ]
 }
