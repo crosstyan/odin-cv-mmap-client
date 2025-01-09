@@ -8,13 +8,13 @@ import "core:fmt"
 // or Zig comptime
 // 
 // https://odin-lang.org/docs/overview/#procedures-using-explicit-parametric-polymorphism-parapoly
-do_n_times :: proc($T: typeid, n: u32, f: proc(_: u32, _: ^T), ctx: ^T) {
+do_n_times :: proc($T: typeid, n: u32, f: proc(cnt: u32, ctx: ^T), ctx: ^T) {
 	for i := u32(0); i < n; i += 1 {
 		f(i, ctx)
 	}
 }
 
-main :: proc() {
+not_main :: proc() {
 	fmt.println("Hello from outside")
 	LocalContext :: struct {
 		x: u8,
@@ -23,11 +23,9 @@ main :: proc() {
 	}
 	ctx := LocalContext{1, 2, 3.0}
 
-	// do it like C...
 	// > Odin only has non-capturing lambda procedures. 
 	// For closures to work correctly would require a form of automatic memory management 
 	// which will never be implemented into Odin.
-	// I'm fine with it
 	do_n_times(LocalContext, 3, proc(i: u32, ctx: ^LocalContext) {
 			fmt.printfln("inside! x={} y={} z={} for {}", ctx.x, ctx.y, ctx.z, i)
 		}, &ctx)
