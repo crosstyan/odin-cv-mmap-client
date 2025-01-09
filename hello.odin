@@ -8,7 +8,7 @@ import "core:fmt"
 // or Zig comptime
 // 
 // https://odin-lang.org/docs/overview/#procedures-using-explicit-parametric-polymorphism-parapoly
-do_n_times :: proc(n: u32, f: proc(_: u32, _: rawptr), ctx: rawptr) {
+do_n_times :: proc($T: typeid, n: u32, f: proc(_: u32, _: ^T), ctx: ^T) {
 	for i := u32(0); i < n; i += 1 {
 		f(i, ctx)
 	}
@@ -28,8 +28,7 @@ main :: proc() {
 	// For closures to work correctly would require a form of automatic memory management 
 	// which will never be implemented into Odin.
 	// I'm fine with it
-	do_n_times(3, proc(i: u32, p_ctx: rawptr) {
-			ctx := cast(^LocalContext)p_ctx
+	do_n_times(LocalContext, 3, proc(i: u32, ctx: ^LocalContext) {
 			fmt.printfln("inside! x={} y={} z={} for {}", ctx.x, ctx.y, ctx.z, i)
 		}, &ctx)
 }
