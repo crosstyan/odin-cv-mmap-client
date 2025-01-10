@@ -21,6 +21,7 @@ GLSL_VERSION :: "#version 150"
 SHM_NAME :: "/tmp_vid"
 ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
 
+
 main :: proc() {
 	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
 	defer glfw.Terminate()
