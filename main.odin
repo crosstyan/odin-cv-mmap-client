@@ -1,10 +1,12 @@
 package main
 import "core:c"
 import "core:fmt"
+import "core:sys/posix"
 
 import im "odin-imgui"
 import "odin-imgui/imgui_impl_glfw"
 import "odin-imgui/imgui_impl_opengl3"
+import zmq "odin-zeromq"
 import gl "vendor:OpenGL"
 import "vendor:glfw"
 
@@ -15,6 +17,9 @@ DISABLE_DOCKING :: #config(DISABLE_DOCKING, false)
 GL_MAJOR_VERSION :: 3
 GL_MINOR_VERSION :: 3
 GLSL_VERSION :: "#version 150"
+
+SHM_NAME :: "/tmp_vid"
+ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
 
 main :: proc() {
 	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")

@@ -1,3 +1,6 @@
 [submodule "odin-imgui"]
 	path = odin-imgui
 	url = https://gitlab.com/L-4/odin-imgui/
+[submodule "odin-zeromq"]
+	path = odin-zeromq
+	url = https://github.com/crosstyan/odin-zeromq
