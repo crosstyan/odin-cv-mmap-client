@@ -13,7 +13,8 @@ import "vendor:glfw"
 
 DISABLE_DOCKING :: #config(DISABLE_DOCKING, false)
 GL_MAJOR_VERSION :: 3
-GL_MINOR_VERSION :: 2
+GL_MINOR_VERSION :: 3
+GLSL_VERSION :: "#version 150"
 
 main :: proc() {
 	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
@@ -55,7 +56,7 @@ main :: proc() {
 	im.StyleColorsDark()
 	assert(imgui_impl_glfw.InitForOpenGL(window, true), "Failed to initialize ImGui GLFW")
 	defer imgui_impl_glfw.Shutdown()
-	assert(imgui_impl_opengl3.Init("#version 150"), "Failed to initialize ImGui OpenGL3")
+	assert(imgui_impl_opengl3.Init(GLSL_VERSION), "Failed to initialize ImGui OpenGL3")
 	defer imgui_impl_opengl3.Shutdown()
 
 	for !glfw.WindowShouldClose(window) {
@@ -64,8 +65,6 @@ main :: proc() {
 		imgui_impl_opengl3.NewFrame()
 		imgui_impl_glfw.NewFrame()
 		im.NewFrame()
-
-		// im.ShowDemoWindow()
 
 		if im.Begin("Window containing a quit button") {
 			if im.Button("quit me!") {

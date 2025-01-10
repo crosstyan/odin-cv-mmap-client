@@ -9,7 +9,7 @@ import "core:fmt"
 // 
 // https://odin-lang.org/docs/overview/#procedures-using-explicit-parametric-polymorphism-parapoly
 do_n_times :: proc($T: typeid, n: u32, f: proc(cnt: u32, ctx: ^T), ctx: ^T) {
-	for i := u32(0); i < n; i += 1 {
+	for i in 0 ..< n {
 		f(i, ctx)
 	}
 }
