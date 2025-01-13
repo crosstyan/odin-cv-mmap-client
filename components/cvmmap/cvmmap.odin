@@ -1,5 +1,6 @@
 package cvmmap
 import zmq "../../lib/odin-zeromq"
+import "base:runtime"
 import "core:log"
 import "core:os"
 import "core:strings"
@@ -49,20 +50,21 @@ SyncMessage :: struct #packed {
 
 
 CvMmapClient :: struct {
-	_shm_name:       string,
-	_zmq_addr:       string,
-	_zmq_ctx:        ^zmq.Context,
-	_zmq_sock:       ^zmq.Socket,
-	_shm_fd:         Maybe(posix.FD),
-	_ref_frame_info: Maybe(FrameInfo),
-	_has_init:       bool,
+	_shm_name:     string,
+	_zmq_addr:     string,
+	_zmq_ctx:      ^zmq.Context,
+	_zmq_sock:     ^zmq.Socket,
+	_shm_size:     Maybe(uint),
+	_shm_fd:       Maybe(posix.FD),
+	_shm_ptr:      Maybe([^]u8),
+	_has_init:     bool,
 	// task
-	_polling_task:   Maybe(^Thread),
-	_is_running:     bool,
+	_polling_task: Maybe(^Thread),
+	_is_running:   bool,
 	// callbacks
 	// used in `on_frame` callback
-	user_data:       rawptr,
-	on_frame:        proc(info: FrameInfo, buffer: []u8, user_data: rawptr),
+	user_data:     rawptr,
+	on_frame:      proc(info: FrameInfo, buffer: []u8, user_data: rawptr),
 }
 
 create :: proc(shm_name: string, zmq_addr: string) -> ^CvMmapClient {
@@ -71,7 +73,9 @@ create :: proc(shm_name: string, zmq_addr: string) -> ^CvMmapClient {
 	client._zmq_addr = zmq_addr
 	client._zmq_ctx = zmq.ctx_new()
 	client._zmq_sock = zmq.socket(client._zmq_ctx, zmq.SUB)
+	client._shm_size = nil
 	client._shm_fd = nil
+	client._shm_ptr = nil
 	client._has_init = false
 
 	client._polling_task = nil
@@ -147,6 +151,20 @@ init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 }
 
 @(private)
+_frame_buffer :: proc(self: ^CvMmapClient) -> ([]u8, bool) {
+	ptr, ok := self._shm_ptr.?
+	if !ok {
+		return nil, false
+	}
+	size: uint
+	size, ok = self._shm_size.?
+	if !ok {
+		return nil, false
+	}
+	return ptr[:size], true
+}
+
+@(private)
 _polling_task :: proc(t: ^Thread) {
 	client := cast(^CvMmapClient)t.data
 
@@ -169,19 +187,60 @@ _polling_task :: proc(t: ^Thread) {
 		return sync_msg, true
 	}
 
-	at_first_frame :: proc(client: ^CvMmapClient) {
-		sync_msg, ok := recv_sync_msg(client._zmq_sock)
+	at_first_frame :: proc(client: ^CvMmapClient) -> bool {
+		// https://github.com/odin-lang/Odin/issues/29
+		ok: bool = ---
+		assert(client._shm_fd != nil, "shm_fd is nil")
+		sync_msg: SyncMessage
+		sync_msg, ok = recv_sync_msg(client._zmq_sock)
 		if !ok {
-			return
+			return false
 		}
-		client._ref_frame_info = sync_msg.info
+		client._shm_size = cast(uint)sync_msg.info.buffer_size
+		client._shm_ptr =
+		cast(^u8)posix.mmap(nil, client._shm_size.?, {.READ}, {.SHARED}, client._shm_fd.?, 0)
+		if client._shm_ptr == nil {
+			log.errorf("mmap failed; errno={}", posix.get_errno())
+			return false
+		}
+		slice: []u8
+		slice, ok = _frame_buffer(client)
+		if (client.on_frame != nil) && ok {
+			client.on_frame(sync_msg.info, slice, client.user_data)
+		}
+		return true
 	}
 
 	for client._is_running {
+		if client._shm_ptr == nil {
+			ok := at_first_frame(client)
+			if !ok {
+				continue
+			}
+		}
+		ok: bool = ---
+		sync_msg: SyncMessage
+		sync_msg, ok = recv_sync_msg(client._zmq_sock)
+		if !ok {
+			continue
+		}
+		if (client._shm_size.?) != cast(uint)sync_msg.info.buffer_size {
+			log.errorf(
+				"buffer size mismatch; expected={}; actual={}",
+				client._shm_size.?,
+				sync_msg.info.buffer_size,
+			)
+			continue
+		}
+		slice: []u8
+		slice, ok = _frame_buffer(client)
+		if (client.on_frame != nil) && ok {
+			client.on_frame(sync_msg.info, slice, client.user_data)
+		}
 	}
 }
 
-start :: proc(self: ^CvMmapClient) -> CvMmapError {
+start :: proc(self: ^CvMmapClient, init_context := context) -> CvMmapError {
 	if !self._has_init {
 		return CvMmapError.NeverInitialized
 	}
@@ -191,6 +250,7 @@ start :: proc(self: ^CvMmapClient) -> CvMmapError {
 	self._is_running = true
 	self._polling_task = thread.create(_polling_task)
 	self._polling_task.?.data = self
+	self._polling_task.?.init_context = init_context
 	thread.start(self._polling_task.?)
 	return CvMmapError.None
 }
@@ -206,5 +266,14 @@ stop :: proc(self: ^CvMmapClient) {
 	if task, ok := self._polling_task.?; ok {
 		thread.join(task)
 		thread.destroy(task)
+	}
+	if self._shm_ptr != nil {
+		posix.munmap(self._shm_ptr.?, self._shm_size.?)
+		self._shm_ptr = nil
+	}
+	self._shm_size = nil
+	if self._shm_fd != nil {
+		posix.close(self._shm_fd.?)
+		self._shm_fd = nil
 	}
 }

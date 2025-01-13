@@ -9,6 +9,8 @@
     "GLSL",
     "Hellope",
     "imgui",
+    "infof",
+    "munmap",
     "OPENGL",
     "printfln",
     "println",

@@ -1,8 +1,12 @@
 package main
+import "base:runtime"
+import "components/cvmmap"
 import "core:c"
 import "core:fmt"
+import "core:log"
+import "core:os"
+import "core:sync"
 import "core:sys/posix"
-
 import im "lib/odin-imgui"
 import "lib/odin-imgui/imgui_impl_glfw"
 import "lib/odin-imgui/imgui_impl_opengl3"
@@ -22,7 +26,7 @@ SHM_NAME :: "/tmp_vid"
 ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
 
 
-main :: proc() {
+gui_main :: proc() {
 	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
 	defer glfw.Terminate()
 
@@ -95,4 +99,50 @@ main :: proc() {
 
 		glfw.SwapBuffers(window)
 	}
+}
+
+main :: proc() {
+	lk := sync.Mutex{}
+	@(static) cv := sync.Cond{}
+	context.logger = log.create_console_logger(log.Level.Debug)
+
+	// create a copy of the context to be (with logging)
+	// available until the end of `main` stack frame
+	local_ctx: runtime.Context = context
+	@(static) ctx: ^runtime.Context
+	ctx = &local_ctx
+	posix.signal(posix.Signal.SIGINT, proc "c" (sig: posix.Signal) {
+		context = ctx^
+		log.infof("signal={}", sig)
+		sync.cond_signal(&cv)
+	})
+	log.info("signal handler set")
+
+	client := cvmmap.create(SHM_NAME, ZEROMQ_ADDR)
+	log.info("created")
+	defer {
+		cvmmap.destroy(client)
+		log.info("destroyed")
+	}
+	on_frame := proc(info: cvmmap.FrameInfo, buffer: []u8, user_data: rawptr) {
+		log.infof("FrameInfo={}; Len={}", info, len(buffer))
+	}
+	client.on_frame = on_frame
+	error_type, code := cvmmap.init(client)
+	log.info("initialized")
+	if error_type != cvmmap.CvMmapError.None {
+		log.errorf("Error={}; Code={}", error_type, code)
+		return
+	}
+	error_type = cvmmap.start(client)
+	log.info("started")
+	defer {
+		cvmmap.stop(client)
+		log.info("stopped")
+	}
+	if error_type != cvmmap.CvMmapError.None {
+		log.errorf("Error={}", error_type)
+		return
+	}
+	sync.cond_wait(&cv, &lk)
 }
