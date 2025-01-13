@@ -4,6 +4,7 @@
     "cstring",
     "cvmmap",
     "errno",
+    "errorf",
     "glfw",
     "GLSL",
     "Hellope",

@@ -1,11 +1,13 @@
 package cvmmap
 import zmq "../../lib/odin-zeromq"
+import "core:log"
 import "core:os"
 import "core:strings"
 import "core:sys/linux"
 import "core:sys/posix"
 import "core:thread"
 
+Thread :: thread.Thread
 FRAME_TOPIC_MAGIC :: 0x7d
 
 // same as OpenCV's definitions
@@ -38,22 +40,29 @@ FrameInfo :: struct #packed {
 	buffer_size:  u32,
 	pixel_format: PixelFormat,
 }
-Thread :: thread.Thread
+
+SyncMessage :: struct #packed {
+	magic:       u8,
+	frame_count: u32,
+	info:        FrameInfo,
+}
+
 
 CvMmapClient :: struct {
-	_shm_name:     string,
-	_zmq_addr:     string,
-	_zmq_ctx:      ^zmq.Context,
-	_zmq_sock:     ^zmq.Socket,
-	_shm_fd:       Maybe(posix.FD),
-	_has_init:     bool,
+	_shm_name:       string,
+	_zmq_addr:       string,
+	_zmq_ctx:        ^zmq.Context,
+	_zmq_sock:       ^zmq.Socket,
+	_shm_fd:         Maybe(posix.FD),
+	_ref_frame_info: Maybe(FrameInfo),
+	_has_init:       bool,
 	// task
-	_polling_task: Maybe(^Thread),
-	_is_running:   bool,
+	_polling_task:   Maybe(^Thread),
+	_is_running:     bool,
 	// callbacks
 	// used in `on_frame` callback
-	user_data:     rawptr,
-	on_frame:      proc(info: FrameInfo, buffer: []u8, user_data: rawptr),
+	user_data:       rawptr,
+	on_frame:        proc(info: FrameInfo, buffer: []u8, user_data: rawptr),
 }
 
 create :: proc(shm_name: string, zmq_addr: string) -> ^CvMmapClient {
@@ -73,14 +82,14 @@ create :: proc(shm_name: string, zmq_addr: string) -> ^CvMmapClient {
 	return client
 }
 
-destroy :: proc(client: ^CvMmapClient) {
-	stop(client)
-	if client._shm_fd != nil {
-		posix.close(client._shm_fd.?)
+destroy :: proc(self: ^CvMmapClient) {
+	stop(self)
+	if self._shm_fd != nil {
+		posix.close(self._shm_fd.?)
 	}
-	zmq.close(client._zmq_sock)
-	zmq.ctx_term(client._zmq_ctx)
-	free(client)
+	zmq.close(self._zmq_sock)
+	zmq.ctx_term(self._zmq_ctx)
+	free(self)
 }
 
 CvMmapError :: enum {
@@ -94,37 +103,37 @@ CvMmapError :: enum {
 	AlreadyRunning,
 }
 
-init :: proc(client: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
+init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 	error_type = CvMmapError.None
 	code = 0
 
-	if client._has_init {
+	if self._has_init {
 		error_type = CvMmapError.AlreadyInitialized
 		return
 	}
 
-	zmq_addr_c := strings.clone_to_cstring(client._zmq_addr)
+	zmq_addr_c := strings.clone_to_cstring(self._zmq_addr)
 	defer delete(zmq_addr_c)
 
-	code = cast(int)zmq.setsockopt_bool(client._zmq_sock, zmq.CONFLATE, true)
+	code = cast(int)zmq.setsockopt_bool(self._zmq_sock, zmq.CONFLATE, true)
 	if code != 0 {
 		error_type = CvMmapError.Zmq
 		return
 	}
 	// http://api.zeromq.org/4-2:zmq-connect
-	code = cast(int)zmq.connect(client._zmq_sock, zmq_addr_c)
+	code = cast(int)zmq.connect(self._zmq_sock, zmq_addr_c)
 	if code != 0 {
 		error_type = CvMmapError.Zmq
 		return
 	}
 	topic := [1]u8{FRAME_TOPIC_MAGIC}
-	code = cast(int)zmq.setsockopt_bytes(client._zmq_sock, zmq.SUBSCRIBE, topic[:])
+	code = cast(int)zmq.setsockopt_bytes(self._zmq_sock, zmq.SUBSCRIBE, topic[:])
 	if code != 0 {
 		error_type = CvMmapError.Zmq
 		return
 	}
 
-	shm_name_c := strings.clone_to_cstring(client._shm_name)
+	shm_name_c := strings.clone_to_cstring(self._shm_name)
 	defer delete(shm_name_c)
 	fd := posix.shm_open(shm_name_c, {.WRONLY}, {.IRUSR, .IRGRP, .IROTH})
 	if fd == -1 {
@@ -132,51 +141,69 @@ init :: proc(client: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 		code = cast(int)posix.get_errno()
 		return
 	}
-	client._shm_fd = fd
-	client._has_init = true
+	self._shm_fd = fd
+	self._has_init = true
 	return
 }
 
 @(private)
 _polling_task :: proc(t: ^Thread) {
 	client := cast(^CvMmapClient)t.data
-	for client._is_running {
+
+	recv_sync_msg :: proc(skt: ^zmq.Socket) -> (SyncMessage, bool) {
+		sync_msg := SyncMessage{}
 		msg := zmq.Message{}
-		data, ok := zmq.recv_raw_msg_as_bytes(&msg, client._zmq_sock)
+		data, ok := zmq.recv_raw_msg_as_bytes(&msg, skt)
 		if !ok {
-			continue
+			return sync_msg, false
 		}
-		if len(data) < size_of(FrameInfo) {
-			continue
+		if l := len(data); l < size_of(SyncMessage) {
+			log.errorf("invalid message size={}; required size={}", l, size_of(SyncMessage))
+			return sync_msg, false
 		}
-		info := cast(^FrameInfo)(raw_data(data))
-		// TODO: resize the shared memory for the first of time
+		sync_msg = (cast(^SyncMessage)(raw_data(data)))^
+		if sync_msg.magic != FRAME_TOPIC_MAGIC {
+			log.errorf("invalid magic={}", sync_msg.magic)
+			return sync_msg, false
+		}
+		return sync_msg, true
+	}
+
+	at_first_frame :: proc(client: ^CvMmapClient) {
+		sync_msg, ok := recv_sync_msg(client._zmq_sock)
+		if !ok {
+			return
+		}
+		client._ref_frame_info = sync_msg.info
+	}
+
+	for client._is_running {
 	}
 }
 
-start :: proc(client: ^CvMmapClient) -> CvMmapError {
-	if !client._has_init {
+start :: proc(self: ^CvMmapClient) -> CvMmapError {
+	if !self._has_init {
 		return CvMmapError.NeverInitialized
 	}
-	if client._is_running {
+	if self._is_running {
 		return CvMmapError.AlreadyRunning
 	}
-	client._is_running = true
-	client._polling_task = thread.create(_polling_task)
-	client._polling_task.?.data = client
-	thread.start(client._polling_task.?)
+	self._is_running = true
+	self._polling_task = thread.create(_polling_task)
+	self._polling_task.?.data = self
+	thread.start(self._polling_task.?)
 	return CvMmapError.None
 }
 
-stop :: proc(client: ^CvMmapClient) {
-	if !client._has_init {
+stop :: proc(self: ^CvMmapClient) {
+	if !self._has_init {
 		return
 	}
-	if !client._is_running {
+	if !self._is_running {
 		return
 	}
-	client._is_running = false
-	if task, ok := client._polling_task.?; ok {
+	self._is_running = false
+	if task, ok := self._polling_task.?; ok {
 		thread.join(task)
 		thread.destroy(task)
 	}
