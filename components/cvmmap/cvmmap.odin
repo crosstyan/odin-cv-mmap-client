@@ -8,8 +8,10 @@ import "core:sys/linux"
 import "core:sys/posix"
 import "core:thread"
 
+FD :: posix.FD
 Thread :: thread.Thread
 FRAME_TOPIC_MAGIC :: 0x7d
+BAD_MMAP_ADDR :: 0xFFFFFFFFFFFFFFFF
 
 // same as OpenCV's definitions
 Depth :: enum u8 {
@@ -146,7 +148,7 @@ init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 
 	shm_name_c := strings.clone_to_cstring(self._shm_name)
 	defer delete(shm_name_c)
-	fd := posix.shm_open(shm_name_c, {.WRONLY}, {.IRUSR, .IRGRP, .IROTH})
+	fd := posix.shm_open(shm_name_c, {}, {.IRUSR, .IWUSR, .IRGRP, .IWGRP, .IROTH, .IWOTH})
 	if fd == -1 {
 		is_disconnect_zmq = true
 		error_type = CvMmapError.Shm
@@ -204,13 +206,17 @@ _polling_task :: proc(t: ^Thread) {
 		if !ok {
 			return false
 		}
+		fd: FD
+		fd, ok = client._shm_fd.?
+		assert(ok, "shm_fd is nil")
 		client._shm_size = cast(uint)sync_msg.info.buffer_size
-		client._shm_ptr =
-		cast(^u8)posix.mmap(nil, client._shm_size.?, {.READ}, {.SHARED}, client._shm_fd.?, 0)
-		if client._shm_ptr == nil {
-			log.errorf("mmap failed; errno={}", posix.get_errno())
+		shm_ptr := posix.mmap(nil, client._shm_size.?, {.READ}, {.SHARED}, fd, 0)
+		log.debugf("mmap ptr={}; fd={}", client._shm_ptr, client._shm_fd.?)
+		if shm_ptr == nil || shm_ptr == cast(rawptr)(cast(uintptr)BAD_MMAP_ADDR) {
+			log.errorf("mmap failed; errno={}; ptr={}", posix.get_errno(), shm_ptr)
 			return false
 		}
+		client._shm_ptr = cast([^]u8)shm_ptr
 		slice: []u8
 		slice, ok = _frame_buffer(client)
 		if (client.on_frame != nil) && ok {
@@ -276,7 +282,7 @@ stop :: proc(self: ^CvMmapClient) {
 		thread.destroy(task)
 	}
 	if self._shm_ptr != nil {
-		posix.munmap(self._shm_ptr.?, self._shm_size.?)
+		linux.munmap(self._shm_ptr.?, self._shm_size.?)
 		self._shm_ptr = nil
 	}
 	self._shm_size = nil
