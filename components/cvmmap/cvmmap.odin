@@ -44,10 +44,11 @@ FrameInfo :: struct #packed {
 
 SyncMessage :: struct #packed {
 	magic:       u8,
-	frame_count: u32,
+	frame_index: u32,
 	info:        FrameInfo,
 }
 
+OnFrame_Proc :: proc(info: FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr)
 
 CvMmapClient :: struct {
 	_shm_name:     string,
@@ -64,7 +65,7 @@ CvMmapClient :: struct {
 	// callbacks
 	// used in `on_frame` callback
 	user_data:     rawptr,
-	on_frame:      proc(info: FrameInfo, buffer: []u8, user_data: rawptr),
+	on_frame:      OnFrame_Proc,
 }
 
 create :: proc(shm_name: string, zmq_addr: string) -> ^CvMmapClient {
@@ -107,6 +108,7 @@ CvMmapError :: enum {
 	AlreadyRunning,
 }
 
+// setup the ZMQ socket and Open the shared memory file descriptor
 init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 	error_type = CvMmapError.None
 	code = 0
@@ -130,9 +132,14 @@ init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 		error_type = CvMmapError.Zmq
 		return
 	}
+	is_disconnect_zmq := false
+	defer if is_disconnect_zmq {
+		zmq.disconnect(self._zmq_sock, zmq_addr_c)
+	}
 	topic := [1]u8{FRAME_TOPIC_MAGIC}
 	code = cast(int)zmq.setsockopt_bytes(self._zmq_sock, zmq.SUBSCRIBE, topic[:])
 	if code != 0 {
+		is_disconnect_zmq = true
 		error_type = CvMmapError.Zmq
 		return
 	}
@@ -141,6 +148,7 @@ init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 	defer delete(shm_name_c)
 	fd := posix.shm_open(shm_name_c, {.WRONLY}, {.IRUSR, .IRGRP, .IROTH})
 	if fd == -1 {
+		is_disconnect_zmq = true
 		error_type = CvMmapError.Shm
 		code = cast(int)posix.get_errno()
 		return
@@ -206,7 +214,7 @@ _polling_task :: proc(t: ^Thread) {
 		slice: []u8
 		slice, ok = _frame_buffer(client)
 		if (client.on_frame != nil) && ok {
-			client.on_frame(sync_msg.info, slice, client.user_data)
+			client.on_frame(sync_msg.info, sync_msg.frame_index, slice, client.user_data)
 		}
 		return true
 	}
@@ -235,7 +243,7 @@ _polling_task :: proc(t: ^Thread) {
 		slice: []u8
 		slice, ok = _frame_buffer(client)
 		if (client.on_frame != nil) && ok {
-			client.on_frame(sync_msg.info, slice, client.user_data)
+			client.on_frame(sync_msg.info, sync_msg.frame_index, slice, client.user_data)
 		}
 	}
 }

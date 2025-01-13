@@ -101,7 +101,7 @@ gui_main :: proc() {
 	}
 }
 
-main :: proc() {
+cli_main :: proc() {
 	lk := sync.Mutex{}
 	@(static) cv := sync.Cond{}
 	context.logger = log.create_console_logger(log.Level.Debug)
@@ -124,8 +124,8 @@ main :: proc() {
 		cvmmap.destroy(client)
 		log.info("destroyed")
 	}
-	on_frame := proc(info: cvmmap.FrameInfo, buffer: []u8, user_data: rawptr) {
-		log.infof("FrameInfo={}; Len={}", info, len(buffer))
+	on_frame := proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
+		log.infof("[{}] FrameInfo={}; Len={}", frame_index, info, len(buffer))
 	}
 	client.on_frame = on_frame
 	error_type, code := cvmmap.init(client)
@@ -145,4 +145,8 @@ main :: proc() {
 		return
 	}
 	sync.cond_wait(&cv, &lk)
+}
+
+main :: proc() {
+	cli_main()
 }
