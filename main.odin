@@ -180,6 +180,17 @@ gui_main :: proc() {
 		}
 	}
 
+	max_width_retain_ar :: proc(target_max_width: f32, width: f32, height: f32) -> (f32, f32) {
+		aspect_ratio := width / height
+		new_width := width
+		new_height := height
+		if width > target_max_width {
+			new_width = target_max_width
+			new_height = new_width / aspect_ratio
+		}
+		return new_width, new_height
+	}
+
 	// https://news.ycombinator.com/item?id=21685027
 	for !glfw.WindowShouldClose(window) {
 		glfw.PollEvents()
@@ -195,9 +206,14 @@ gui_main :: proc() {
 				glfw.SetWindowShouldClose(window, true)
 			}
 			if render_ctx._has_gl_init {
+				width, height := max_width_retain_ar(
+					620,
+					cast(f32)render_ctx.info.width,
+					cast(f32)render_ctx.info.height,
+				)
 				im.Image(
 					cast(im.TextureID)(uintptr(render_ctx.texture_index)),
-					im.Vec2{cast(f32)render_ctx.info.width, cast(f32)render_ctx.info.height},
+					im.Vec2{width, height},
 				)
 			}
 		}
