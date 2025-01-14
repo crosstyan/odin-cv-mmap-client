@@ -40,7 +40,9 @@ gui_main :: proc() {
 	glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, 1)
 	glfw.WindowHint(glfw.RESIZABLE, 1)
 
-	window := glfw.CreateWindow(640, 800, "Test", nil, nil)
+	// https://stackoverflow.com/questions/66299684/how-to-prevent-glfw-window-from-showing-up-right-in-creating
+	glfw.WindowHint_bool(glfw.VISIBLE, false)
+	window := glfw.CreateWindow(640, 800, "Hello", nil, nil)
 	assert(window != nil, "Failed to create window")
 	defer glfw.DestroyWindow(window)
 	glfw.MakeContextCurrent(window)
@@ -188,6 +190,7 @@ gui_main :: proc() {
 
 		handle_texture(&render_ctx)
 		if im.Begin("Window containing a quit button") {
+			im.SetWindowSize(im.Vec2{640, 800}, im.Cond.Once)
 			if im.Button("quit me!") {
 				glfw.SetWindowShouldClose(window, true)
 			}
