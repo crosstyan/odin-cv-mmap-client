@@ -77,20 +77,61 @@ gui_main :: proc() {
 		cvmmap.destroy(client)
 		log.info("destroyed")
 	}
+
 	TextureInfo :: struct {
 		texture_buffer: []u8,
 		width:          u32,
 		height:         u32,
-		is_dirty:       bool,
 	}
-	texture_index: Maybe(u32) = nil
-	info: Maybe(TextureInfo) = nil
+
+	VideoRenderContext :: struct {
+		_has_info_init: bool,
+		_has_gl_init:   bool,
+		is_dirty:       bool,
+		texture_index:  u32,
+		info:           TextureInfo,
+	}
+
+	render_ctx := VideoRenderContext{false, false, false, 0, TextureInfo{nil, 0, 0}}
+	gl_texture_from_bgr_buffer :: proc(buffer: []u8, width: u32, height: u32) -> u32 {
+		// Create a OpenGL texture identifier
+		tid: u32
+		gl.GenTextures(1, &tid)
+		gl.BindTexture(gl.TEXTURE_2D, tid)
+		// Setup filtering parameters for display
+		gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+		gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+		// Upload pixels into texture
+		gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
+		// https://docs.gl/gl3/glTexImage2D
+		// https://docs.gl/gl3/glTexImage2D
+		// https://github.com/drbrain/opengl/blob/master/ext/opengl/gl-enums.h
+		// https://stackoverflow.com/questions/4745264/opengl-gl-bgr-not-working-for-texture-internal-format
+		gl.TexImage2D(
+			gl.TEXTURE_2D,
+			0,
+			gl.RGB,
+			cast(i32)width,
+			cast(i32)height,
+			0,
+			gl.BGR,
+			gl.UNSIGNED_BYTE,
+			raw_data(buffer),
+		)
+		return tid
+	}
+
 	on_frame := proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
-		texture_info := cast(^Maybe(TextureInfo))user_data
-		texture_info^ = TextureInfo{buffer, u32(info.width), u32(info.height), true}
+		ctx_opt := cast(^VideoRenderContext)user_data
+		assert(ctx_opt != nil, "invalid user_data")
+		if !ctx_opt._has_info_init {
+			ctx_opt._has_info_init = true
+		}
+		ctx_opt.info = TextureInfo{buffer, u32(info.width), u32(info.height)}
+		ctx_opt.is_dirty = true
 	}
 	client.on_frame = on_frame
-	client.user_data = &info
+	client.user_data = &render_ctx
 	error_type, _ := cvmmap.init(client)
 	assert(error_type == cvmmap.CvMmapError.None, "failed to initialize cv-mmap client")
 	error_type = cvmmap.start(client)
@@ -100,71 +141,44 @@ gui_main :: proc() {
 	}
 	assert(error_type == cvmmap.CvMmapError.None, "failed to start cv-mmap client")
 
-	IterContext :: struct {
-		running: bool,
-	}
-
-	handle_texture :: proc(info: ^Maybe(TextureInfo), texture_index: ^Maybe(u32)) {
-		if i, ok := info.?; !ok {
+	handle_texture :: proc(self: ^VideoRenderContext) {
+		if !self._has_info_init {
 			return
-		} else {
-			if !i.is_dirty {
-				return
-			}
-			if tid, ok := texture_index.?; ok {
-				// https://learnopengl.com/Getting-started/Textures
-				// https://github.com/ocornut/imgui/wiki/Image-Loading-and-Displaying-Examples
-				// glTexSubImage2D to update the texture (I'm assuming the parameters are the same)
-				// gl.BindTexture(gl.TEXTURE_2D, tid)
-				// gl.TexSubImage2D(
-				// 	gl.TEXTURE_2D,
-				// 	0,
-				// 	0,
-				// 	0,
-				// 	cast(i32)i.width,
-				// 	cast(i32)i.height,
-				// 	gl.RGBA,
-				// 	gl.UNSIGNED_BYTE,
-				// 	raw_data(i.texture_buffer),
-				// )
-			} else {
-				// Create a OpenGL texture identifier
-				t_tid: u32
-				gl.GenTextures(1, &t_tid)
-				gl.BindTexture(gl.TEXTURE_2D, t_tid)
-				binding: i32
-				// Setup filtering parameters for display
-				gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-				gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-				// Upload pixels into texture
-				gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
+		}
+		if !self._has_gl_init {
+			assert(self.info.texture_buffer != nil, "invalid texture buffer")
+			assert(self.is_dirty, "invalid dirty state, expecting true")
+			self.texture_index = gl_texture_from_bgr_buffer(
+				self.info.texture_buffer,
+				self.info.width,
+				self.info.height,
+			)
+			self._has_gl_init = true
+			self.is_dirty = false
+			return
+		}
 
-				// gl.GetIntegerv(gl.TEXTURE_BINDING_2D, &binding)
-				// log.infof("TextureID={}; Texture binding ID={}", t_tid, binding)
-				// https://docs.gl/gl3/glTexImage2D
-				// https://github.com/drbrain/opengl/blob/master/ext/opengl/gl-enums.h
-				gl.TexImage2D(
-					gl.TEXTURE_2D,
-					0,
-					gl.BGR,
-					cast(i32)i.width,
-					cast(i32)i.height,
-					0,
-					gl.RGBA,
-					gl.UNSIGNED_BYTE,
-					raw_data(i.texture_buffer),
-				)
-				err := gl.GetError()
-				if err != gl.NO_ERROR {
-					log.errorf("Error={}", err)
-				}
-				texture_index^ = t_tid
-			}
-			// un-mark dirty
-			info^ = TextureInfo{i.texture_buffer, i.width, i.height, false}
+		if self.is_dirty {
+			self.is_dirty = false
+			// https://learnopengl.com/Getting-started/Textures
+			// https://github.com/ocornut/imgui/wiki/Image-Loading-and-Displaying-Examples
+			// glTexSubImage2D to update the texture (I'm assuming the parameters are the same)
+			gl.BindTexture(gl.TEXTURE_2D, self.texture_index)
+			gl.TexSubImage2D(
+				gl.TEXTURE_2D,
+				0,
+				0,
+				0,
+				cast(i32)self.info.width,
+				cast(i32)self.info.height,
+				gl.BGR,
+				gl.UNSIGNED_BYTE,
+				raw_data(self.info.texture_buffer),
+			)
 		}
 	}
 
+	// https://news.ycombinator.com/item?id=21685027
 	for !glfw.WindowShouldClose(window) {
 		glfw.PollEvents()
 
@@ -172,18 +186,16 @@ gui_main :: proc() {
 		imgui_impl_glfw.NewFrame()
 		im.NewFrame()
 
-		handle_texture(&info, &texture_index)
+		handle_texture(&render_ctx)
 		if im.Begin("Window containing a quit button") {
 			if im.Button("quit me!") {
 				glfw.SetWindowShouldClose(window, true)
 			}
-			if tid, ok := texture_index.?; ok {
-				if i, okk := info.?; okk {
-					im.Image(
-						cast(im.TextureID)(uintptr(tid)),
-						im.Vec2{cast(f32)i.width, cast(f32)i.height},
-					)
-				}
+			if render_ctx._has_gl_init {
+				im.Image(
+					cast(im.TextureID)(uintptr(render_ctx.texture_index)),
+					im.Vec2{cast(f32)render_ctx.info.width, cast(f32)render_ctx.info.height},
+				)
 			}
 		}
 		im.End()
