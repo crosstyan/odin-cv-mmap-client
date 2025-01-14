@@ -1,8 +1,10 @@
 {
   "cSpell.words": [
+    "CHECKVERSION",
     "comptime",
     "cstring",
     "cvmmap",
+    "debugf",
     "errno",
     "errorf",
     "glfw",
@@ -12,8 +14,13 @@
     "infof",
     "munmap",
     "OPENGL",
+    "Parameteri",
     "printfln",
     "println",
-    "rawptr"
+    "rawptr",
+    "Storei",
+    "uintptr",
+    "Viewports",
+    "vsync"
   ]
 }
