@@ -81,19 +81,14 @@ gui_main :: proc() {
 		texture_buffer: []u8,
 		width:          u32,
 		height:         u32,
+		is_dirty:       bool,
 	}
+	texture_index: Maybe(u32) = nil
 	info: Maybe(TextureInfo) = nil
 	on_frame := proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
 		log.infof("[{}] FrameInfo={}; Len={}", frame_index, info, len(buffer))
 		texture_info := cast(^Maybe(TextureInfo))user_data
-		if target_id, ok := (texture_info^).?; ok {
-			delete(target_id.texture_buffer)
-		}
-		buffer_0 := buffer[0]
-		log.infof("buffer[0]={}", buffer_0)
-		target_buffer := make([]u8, len(buffer))
-		copy(target_buffer, buffer)
-		texture_info^ = TextureInfo{target_buffer, u32(info.width), u32(info.height)}
+		texture_info^ = TextureInfo{buffer, u32(info.width), u32(info.height), true}
 	}
 	client.on_frame = on_frame
 	client.user_data = &info
@@ -110,39 +105,60 @@ gui_main :: proc() {
 		running: bool,
 	}
 
+	handle_texture :: proc(info: ^Maybe(TextureInfo), texture_index: ^Maybe(u32)) {
+		if i, ok := info.?; !ok {
+			return
+		} else {
+			if !i.is_dirty {
+				return
+			}
+			if tid, ok := texture_index.?; ok {
+				gl.DeleteTextures(1, &tid)
+			}
+			texture_id: u32
+			gl.BindTexture(gl.TEXTURE_2D, texture_id)
+			gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+			gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+			gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
+			gl.TexImage2D(
+				gl.TEXTURE_2D,
+				0,
+				gl.BGR,
+				cast(i32)i.width,
+				cast(i32)i.height,
+				0,
+				gl.RGBA,
+				gl.UNSIGNED_BYTE,
+				raw_data(i.texture_buffer),
+			)
+			info^ = TextureInfo{i.texture_buffer, i.width, i.height, false}
+			texture_index^ = texture_id
+		}
+	}
+
 	for !glfw.WindowShouldClose(window) {
 		glfw.PollEvents()
 
+		handle_texture(&info, &texture_index)
 		imgui_impl_opengl3.NewFrame()
 		imgui_impl_glfw.NewFrame()
 		im.NewFrame()
+
+		if tid, ok := texture_index.?; ok {
+			gl.DeleteTextures(1, &tid)
+		}
 
 		if im.Begin("Window containing a quit button") {
 			if im.Button("quit me!") {
 				glfw.SetWindowShouldClose(window, true)
 			}
-			if i, ok := info.?; ok {
-				texture_id: u32
-				gl.GenTextures(1, &texture_id)
-				defer gl.DeleteTextures(1, &texture_id)
-				gl.BindTexture(gl.TEXTURE_2D, texture_id)
-				gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-				gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-				gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
-				gl.TexImage2D(
-					gl.TEXTURE_2D,
-					0,
-					gl.BGR,
-					cast(i32)i.width,
-					cast(i32)i.height,
-					0,
-					gl.RGBA,
-					gl.UNSIGNED_BYTE,
-					raw_data(i.texture_buffer),
-				)
-				im_texture_id := im.TextureID(cast(uintptr)texture_id)
-				im.Image(im_texture_id, im.Vec2{cast(f32)i.width, cast(f32)i.height})
-				info = nil
+			if tid, ok := texture_index.?; ok {
+				if i, okk := info.?; okk {
+					im.Image(
+						cast(im.TextureID)(uintptr(tid)),
+						im.Vec2{cast(f32)i.width, cast(f32)i.height},
+					)
+				}
 			}
 		}
 		im.End()
