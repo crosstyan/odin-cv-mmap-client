@@ -86,7 +86,6 @@ gui_main :: proc() {
 	texture_index: Maybe(u32) = nil
 	info: Maybe(TextureInfo) = nil
 	on_frame := proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
-		log.infof("[{}] FrameInfo={}; Len={}", frame_index, info, len(buffer))
 		texture_info := cast(^Maybe(TextureInfo))user_data
 		texture_info^ = TextureInfo{buffer, u32(info.width), u32(info.height), true}
 	}
@@ -113,41 +112,67 @@ gui_main :: proc() {
 				return
 			}
 			if tid, ok := texture_index.?; ok {
-				gl.DeleteTextures(1, &tid)
+				// https://learnopengl.com/Getting-started/Textures
+				// https://github.com/ocornut/imgui/wiki/Image-Loading-and-Displaying-Examples
+				// glTexSubImage2D to update the texture (I'm assuming the parameters are the same)
+				// gl.BindTexture(gl.TEXTURE_2D, tid)
+				// gl.TexSubImage2D(
+				// 	gl.TEXTURE_2D,
+				// 	0,
+				// 	0,
+				// 	0,
+				// 	cast(i32)i.width,
+				// 	cast(i32)i.height,
+				// 	gl.RGBA,
+				// 	gl.UNSIGNED_BYTE,
+				// 	raw_data(i.texture_buffer),
+				// )
+			} else {
+				// Create a OpenGL texture identifier
+				t_tid: u32
+				gl.GenTextures(1, &t_tid)
+				gl.BindTexture(gl.TEXTURE_2D, t_tid)
+				binding: i32
+				// Setup filtering parameters for display
+				gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+				gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+				// Upload pixels into texture
+				gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
+
+				// gl.GetIntegerv(gl.TEXTURE_BINDING_2D, &binding)
+				// log.infof("TextureID={}; Texture binding ID={}", t_tid, binding)
+				// https://docs.gl/gl3/glTexImage2D
+				// https://github.com/drbrain/opengl/blob/master/ext/opengl/gl-enums.h
+				gl.TexImage2D(
+					gl.TEXTURE_2D,
+					0,
+					gl.BGR,
+					cast(i32)i.width,
+					cast(i32)i.height,
+					0,
+					gl.RGBA,
+					gl.UNSIGNED_BYTE,
+					raw_data(i.texture_buffer),
+				)
+				err := gl.GetError()
+				if err != gl.NO_ERROR {
+					log.errorf("Error={}", err)
+				}
+				texture_index^ = t_tid
 			}
-			texture_id: u32
-			gl.BindTexture(gl.TEXTURE_2D, texture_id)
-			gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-			gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-			gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
-			gl.TexImage2D(
-				gl.TEXTURE_2D,
-				0,
-				gl.BGR,
-				cast(i32)i.width,
-				cast(i32)i.height,
-				0,
-				gl.RGBA,
-				gl.UNSIGNED_BYTE,
-				raw_data(i.texture_buffer),
-			)
+			// un-mark dirty
 			info^ = TextureInfo{i.texture_buffer, i.width, i.height, false}
-			texture_index^ = texture_id
 		}
 	}
 
 	for !glfw.WindowShouldClose(window) {
 		glfw.PollEvents()
 
-		handle_texture(&info, &texture_index)
 		imgui_impl_opengl3.NewFrame()
 		imgui_impl_glfw.NewFrame()
 		im.NewFrame()
 
-		if tid, ok := texture_index.?; ok {
-			gl.DeleteTextures(1, &tid)
-		}
-
+		handle_texture(&info, &texture_index)
 		if im.Begin("Window containing a quit button") {
 			if im.Button("quit me!") {
 				glfw.SetWindowShouldClose(window, true)

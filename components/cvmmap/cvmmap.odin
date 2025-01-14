@@ -11,7 +11,8 @@ import "core:thread"
 FD :: posix.FD
 Thread :: thread.Thread
 FRAME_TOPIC_MAGIC :: 0x7d
-BAD_MMAP_ADDR :: 0xFFFFFFFFFFFFFFFF
+// I think it's -1
+BAD_MMAP_ADDR :: cast(rawptr)cast(uintptr)0xFFFFFFFFFFFFFFFF
 
 // same as OpenCV's definitions
 Depth :: enum u8 {
@@ -211,8 +212,7 @@ _polling_task :: proc(t: ^Thread) {
 		assert(ok, "shm_fd is nil")
 		client._shm_size = cast(uint)sync_msg.info.buffer_size
 		shm_ptr := posix.mmap(nil, client._shm_size.?, {.READ}, {.SHARED}, fd, 0)
-		log.debugf("mmap ptr={}; fd={}", client._shm_ptr, client._shm_fd.?)
-		if shm_ptr == nil || shm_ptr == cast(rawptr)(cast(uintptr)BAD_MMAP_ADDR) {
+		if shm_ptr == nil || shm_ptr == BAD_MMAP_ADDR {
 			log.errorf("mmap failed; errno={}; ptr={}", posix.get_errno(), shm_ptr)
 			return false
 		}
