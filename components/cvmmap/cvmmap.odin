@@ -71,11 +71,12 @@ CvMmapClient :: struct {
 	on_frame:      OnFrame_Proc,
 }
 
-create :: proc(shm_name: string, zmq_addr: string) -> ^CvMmapClient {
+create :: proc(shm_name: string, zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^CvMmapClient {
+	ctx := zmq_ctx if zmq_ctx != nil else zmq.ctx_new()
 	client := new(CvMmapClient)
 	client._shm_name = shm_name
 	client._zmq_addr = zmq_addr
-	client._zmq_ctx = zmq.ctx_new()
+	client._zmq_ctx = ctx
 	client._zmq_sock = zmq.socket(client._zmq_ctx, zmq.SUB)
 	client._shm_size = nil
 	client._shm_fd = nil
