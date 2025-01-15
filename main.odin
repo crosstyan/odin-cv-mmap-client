@@ -202,12 +202,17 @@ gui_main :: proc() {
 		handle_texture(&render_ctx)
 		if im.Begin("Window containing a quit button") {
 			im.SetWindowSize(im.Vec2{640, 800}, im.Cond.Once)
+			BORDER :: 20
+			MIN_WIDTH :: 320
+			window_width := im.GetWindowWidth()
+			target_width :=
+				(window_width - BORDER) if (window_width - BORDER) > MIN_WIDTH else MIN_WIDTH
 			if im.Button("quit me!") {
 				glfw.SetWindowShouldClose(window, true)
 			}
 			if render_ctx._has_gl_init {
 				width, height := max_width_retain_ar(
-					620,
+					target_width,
 					cast(f32)render_ctx.info.width,
 					cast(f32)render_ctx.info.height,
 				)
