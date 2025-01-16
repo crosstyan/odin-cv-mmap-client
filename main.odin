@@ -9,6 +9,7 @@ import "core:os"
 import "core:slice"
 import "core:sync"
 import "core:sys/posix"
+import aux "lib/aux-img"
 import im "lib/odin-imgui"
 import "lib/odin-imgui/imgui_impl_glfw"
 import "lib/odin-imgui/imgui_impl_opengl3"
@@ -19,6 +20,9 @@ import "vendor:glfw"
 // https://gitlab.com/L-4/odin-imgui/-/blob/main/examples/glfw_opengl3/main.odin?ref_type=heads
 // https://gist.github.com/SorenSaket/155afe1ec11a79def63341c588ade329
 
+// will modify the image buffer, which means you SHOULD NOT write to the buffer
+// but to copy the buffer to a new one, and then modify it
+MODIFY_IMAGE :: true
 DISABLE_DOCKING :: #config(DISABLE_DOCKING, false)
 // OpenGL 3.3
 GL_MAJOR_VERSION :: 3
@@ -87,6 +91,9 @@ gui_main :: proc() {
 	defer imgui_impl_opengl3.Shutdown()
 
 	TextureInfo :: struct {
+		// if it's nil, it will use the shared memory buffer
+		// directly;
+		allocator:      Maybe(runtime.Allocator),
 		texture_buffer: []u8,
 		width:          u32,
 		height:         u32,
@@ -100,7 +107,7 @@ gui_main :: proc() {
 		info:           TextureInfo,
 	}
 
-	render_ctx := VideoRenderContext{false, false, false, 0, TextureInfo{nil, 0, 0}}
+	render_ctx := VideoRenderContext{false, false, false, 0, TextureInfo{nil, nil, 0, 0}}
 	gl_texture_from_bgr_buffer :: proc(buffer: []u8, width: u32, height: u32) -> u32 {
 		// Create a OpenGL texture identifier
 		tid: u32
@@ -133,10 +140,40 @@ gui_main :: proc() {
 	proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
 		ctx_opt := cast(^VideoRenderContext)user_data
 		assert(ctx_opt != nil, "invalid user_data")
+		when !MODIFY_IMAGE {
+			ctx_opt.info = TextureInfo{nil, buffer, u32(info.width), u32(info.height)}
+		} else {
+			modify :: proc(data: rawptr, info: cvmmap.FrameInfo) {
+				mat := aux.SharedMat {
+					data,
+					info.height,
+					info.width,
+					aux.Depth(info.depth),
+					aux.PixelFormat(info.pixel_format),
+				}
+				aux.write_text(mat, "Hello, world!", aux.Vec2i{35, 35}, aux.Vec3i{0, 0, 0}, 2.0)
+			}
+			if !ctx_opt._has_info_init {
+				loc_buf := make([]u8, len(buffer))
+				copy(loc_buf, buffer)
+				ctx_opt.info = TextureInfo {
+					context.allocator,
+					loc_buf,
+					u32(info.width),
+					u32(info.height),
+				}
+				modify(raw_data(ctx_opt.info.texture_buffer), info)
+			} else {
+				assert(ctx_opt.info.texture_buffer != nil, "invalid texture buffer")
+				assert(len(ctx_opt.info.texture_buffer) == len(buffer), "invalid buffer size")
+				copy(ctx_opt.info.texture_buffer, buffer)
+				modify(raw_data(ctx_opt.info.texture_buffer), info)
+			}
+
+		}
 		if !ctx_opt._has_info_init {
 			ctx_opt._has_info_init = true
 		}
-		ctx_opt.info = TextureInfo{buffer, u32(info.width), u32(info.height)}
 		ctx_opt.is_dirty = true
 	}
 	client.user_data = &render_ctx

@@ -1,0 +1,1 @@
+cp lib/aux-img/libauximg.so .
