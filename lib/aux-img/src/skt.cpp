@@ -152,7 +152,7 @@ struct Vec3i {
 }
 
 extern "C" {
-void im_skt_write_something(aux_img::SharedMat mat, const char *c_str_msg, aux_img::Vec2i pos, aux_img::Vec3i color, float thickness) {
+void aux_img_write_text(aux_img::SharedMat mat, const char *c_str_msg, aux_img::Vec2i pos, aux_img::Vec3i color, float thickness) {
 	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
 	auto cv_org    = cv::Point(pos.x, pos.y);
 	auto cv_color  = cv::Scalar(color.x, color.y, color.z);
