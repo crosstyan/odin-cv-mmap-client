@@ -205,8 +205,12 @@ gui_main :: proc() {
 			BORDER :: 20
 			MIN_WIDTH :: 320
 			window_width := im.GetWindowWidth()
-			target_width :=
-				(window_width - BORDER) if (window_width - BORDER) > MIN_WIDTH else MIN_WIDTH
+			target_width: f32
+			if w := window_width - BORDER; w > MIN_WIDTH {
+				target_width = w
+			} else {
+				target_width = MIN_WIDTH
+			}
 			if im.Button("quit me!") {
 				glfw.SetWindowShouldClose(window, true)
 			}
