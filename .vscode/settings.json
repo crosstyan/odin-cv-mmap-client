@@ -1,5 +1,6 @@
 {
   "cSpell.words": [
+    "BGRA",
     "CHECKVERSION",
     "comptime",
     "cstring",
@@ -12,15 +13,18 @@
     "Hellope",
     "imgui",
     "infof",
+    "MMAP",
     "munmap",
     "OPENGL",
     "Parameteri",
     "printfln",
     "println",
     "rawptr",
+    "RGBA",
     "Storei",
     "uintptr",
     "Viewports",
-    "vsync"
+    "vsync",
+    "YUYV"
   ]
 }

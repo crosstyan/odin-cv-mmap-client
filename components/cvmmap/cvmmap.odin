@@ -71,6 +71,12 @@ CvMmapClient :: struct {
 	on_frame:      OnFrame_Proc,
 }
 
+// create a new cv-mmap client
+//
+// will create a new ZMQ context if not provided
+//
+// a proper life cycle the client:
+// create -> init -> setting callbacks -> start -> stop -> destroy
 create :: proc(shm_name: string, zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^CvMmapClient {
 	ctx := zmq_ctx if zmq_ctx != nil else zmq.ctx_new()
 	client := new(CvMmapClient)
@@ -255,6 +261,7 @@ _polling_task :: proc(t: ^Thread) {
 	}
 }
 
+// start the polling thread, initialize memory mapping
 start :: proc(self: ^CvMmapClient, init_context := context) -> CvMmapError {
 	if !self._has_init {
 		return CvMmapError.NeverInitialized
@@ -270,6 +277,7 @@ start :: proc(self: ^CvMmapClient, init_context := context) -> CvMmapError {
 	return CvMmapError.None
 }
 
+// join the polling thread, destroy the thread and unmap the shared memory
 stop :: proc(self: ^CvMmapClient) {
 	if !self._has_init {
 		return
