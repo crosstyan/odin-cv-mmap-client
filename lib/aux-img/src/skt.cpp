@@ -4,7 +4,7 @@
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
 
-namespace im_skt {
+namespace aux_img {
 /// @note use with `pixel_format` field in `frame_info_t`
 enum class PixelFormat : uint8_t {
 	/// usually 24bit RGB (8bit per channel, depth=U8)
@@ -152,8 +152,8 @@ struct Vec3i {
 }
 
 extern "C" {
-void im_skt_write_something(im_skt::SharedMat mat, const char *c_str_msg, im_skt::Vec2i pos, im_skt::Vec3i color, float thickness) {
-	cv::Mat cv_mat = im_skt::fromSharedMat(mat);
+void im_skt_write_something(aux_img::SharedMat mat, const char *c_str_msg, aux_img::Vec2i pos, aux_img::Vec3i color, float thickness) {
+	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
 	auto cv_org    = cv::Point(pos.x, pos.y);
 	auto cv_color  = cv::Scalar(color.x, color.y, color.z);
 	cv::putText(cv_mat, c_str_msg, cv_org, cv::FONT_HERSHEY_SIMPLEX, 1.0, cv_color, thickness);
