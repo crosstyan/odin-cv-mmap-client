@@ -9,7 +9,8 @@ foreign import opencv_imgproc "system:opencv_imgproc"
 foreign import auximg "libauximg.so"
 @(link_prefix = "aux_img_", default_calling_convention = "c")
 foreign auximg {
-	write_text :: proc(mat: SharedMat, msg: cstring, pos: Vec2i, color: Vec3i, thickness: c.float) ---
+	// @param bottomLeftOrigin When true, the image data origin is at the bottom-left corner. Otherwise, it is at the top-left corner
+	write_text :: proc(mat: SharedMat, text: cstring, pos: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, scale: c.float = 1.0, thickness: c.float = 1.0, bottomLeftOrigin: bool = false) ---
 }
 
 // same as OpenCV's definitions

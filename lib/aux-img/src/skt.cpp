@@ -152,10 +152,10 @@ struct Vec3i {
 }
 
 extern "C" {
-void aux_img_write_text(aux_img::SharedMat mat, const char *c_str_msg, aux_img::Vec2i pos, aux_img::Vec3i color, float thickness) {
+void aux_img_write_text(aux_img::SharedMat mat, const char *text, aux_img::Vec2i pos, aux_img::Vec3i color, float scale, float thickness, bool bottomLeftOrigin) {
 	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
 	auto cv_org    = cv::Point(pos.x, pos.y);
 	auto cv_color  = cv::Scalar(color.x, color.y, color.z);
-	cv::putText(cv_mat, c_str_msg, cv_org, cv::FONT_HERSHEY_SIMPLEX, 1.0, cv_color, thickness);
+	cv::putText(cv_mat, text, cv_org, cv::FONT_HERSHEY_SIMPLEX, scale, cv_color, thickness, cv::LINE_8, bottomLeftOrigin);
 }
 }

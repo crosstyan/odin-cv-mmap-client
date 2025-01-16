@@ -151,7 +151,14 @@ gui_main :: proc() {
 					aux.Depth(info.depth),
 					aux.PixelFormat(info.pixel_format),
 				}
-				aux.write_text(mat, "Hello, world!", aux.Vec2i{35, 35}, aux.Vec3i{0, 0, 0}, 2.0)
+				aux.write_text(
+					mat,
+					"Hello, world!",
+					aux.Vec2i{100, 100},
+					aux.Vec3i{0, 250, 0},
+					3.0,
+					2.0,
+				)
 			}
 			if !ctx_opt._has_info_init {
 				loc_buf := make([]u8, len(buffer))
@@ -169,7 +176,6 @@ gui_main :: proc() {
 				copy(ctx_opt.info.texture_buffer, buffer)
 				modify(raw_data(ctx_opt.info.texture_buffer), info)
 			}
-
 		}
 		if !ctx_opt._has_info_init {
 			ctx_opt._has_info_init = true
