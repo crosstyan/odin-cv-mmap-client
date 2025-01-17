@@ -20,10 +20,10 @@ import "vendor:glfw"
 // https://gitlab.com/L-4/odin-imgui/-/blob/main/examples/glfw_opengl3/main.odin?ref_type=heads
 // https://gist.github.com/SorenSaket/155afe1ec11a79def63341c588ade329
 
+DISABLE_DOCKING :: #config(DISABLE_DOCKING, false)
 // will modify the image buffer, which means you SHOULD NOT write to the buffer
 // but to copy the buffer to a new one, and then modify it
 MODIFY_IMAGE :: true
-DISABLE_DOCKING :: #config(DISABLE_DOCKING, false)
 // OpenGL 3.3
 GL_MAJOR_VERSION :: 3
 GL_MINOR_VERSION :: 3

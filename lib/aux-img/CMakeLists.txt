@@ -9,9 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # endif()
 
 find_package(OpenCV REQUIRED)
-add_library(auximg SHARED src/skt.cpp)
+add_library(auximg SHARED src/aux.cpp)
 target_link_libraries(auximg PUBLIC ${OpenCV_LIBS})
 target_include_directories(auximg PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_include_directories(auximg PUBLIC inc)
 
 add_custom_command(TARGET auximg POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:auximg> ${CMAKE_CURRENT_LIST_DIR}
