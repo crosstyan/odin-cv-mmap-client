@@ -71,6 +71,20 @@ int opencv_format_from_pixel_format(PixelFormat pixel_format, Depth depth);
 // data using OpenCV functions. The external data is not automatically
 // deallocated, so you should take care of it.
 cv::Mat fromSharedMat(SharedMat sharedMat);
+
+enum class Layout {
+	RowMajor = 0,
+	ColMajor,
+};
+
+struct DrawSkeletonOptions {
+	Layout layout;
+	bool is_draw_landmarks;
+	bool is_draw_bones;
+	int landmark_radius;
+	int landmark_thickness;
+	int bone_thickness;
+};
 }
 
 
@@ -90,6 +104,6 @@ void aux_img_put_text(aux_img::SharedMat mat,
 //
 // This function will trust the caller and not check the length,
 // but take whatever is passed to it.
-void aux_img_draw_whole_body_skeleton(aux_img::SharedMat mat, const float *data);
+void aux_img_draw_whole_body_skeleton(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options);
 void aux_img_retangle(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3i color, float thickness);
 }

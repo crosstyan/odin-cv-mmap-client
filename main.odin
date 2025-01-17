@@ -151,14 +151,7 @@ gui_main :: proc() {
 					aux.Depth(info.depth),
 					aux.PixelFormat(info.pixel_format),
 				}
-				aux.mat_write_text(
-					mat,
-					cstring("Hello, world!"),
-					{100, 100},
-					{0, 250, 0},
-					3.0,
-					2.0,
-				)
+				aux.mat_put_text(mat, cstring("Hello, world!"), {100, 100}, {0, 250, 0}, 3.0, 2.0)
 			}
 			if !ctx_opt._has_info_init {
 				loc_buf := make([]u8, len(buffer))

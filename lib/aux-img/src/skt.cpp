@@ -1,8 +1,8 @@
 #include <cstdint>
 #include <cassert>
 #include <functional>
-#include <opencv2/core/types.hpp>
 #include <span>
+#include <aux.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -31,6 +31,7 @@
 #endif
 
 namespace aux_img {
+constexpr auto NUM_KEYPOINTS = 133;
 struct Landmark {
 	uint8_t index;
 	int color[3];
@@ -399,7 +400,7 @@ void for_each_with_pair(std::span<const float> points, std::function<void(std::t
 
 // row based, with shape of (133, 2)
 void draw_whole_body_landmark_row_based(cv::Mat mat, std::span<const float> points, int radius = 3, int thickness = -1) {
-	if (points.size() != 133 * 2) {
+	if (points.size() != NUM_KEYPOINTS * 2) {
 		throw std::invalid_argument("points.size() != 133 * 2");
 	}
 	for_each_landmark([&points, &mat, radius, thickness](Landmark landmark) {
@@ -412,10 +413,10 @@ void draw_whole_body_landmark_row_based(cv::Mat mat, std::span<const float> poin
 
 // column based, with shape of (2, 133)
 void draw_whole_body_landmark_col_based(cv::Mat mat, std::span<const float> points, int radius = 3, int thickness = -1) {
-	if (points.size() != 133 * 2) {
-		throw std::invalid_argument("points.size() != 133 * 2");
+	if (points.size() != NUM_KEYPOINTS * 2) {
+		throw std::invalid_argument("points.size() != 2 * 133");
 	}
-	for_each_landmark([xs = points.subspan(0, 133), ys = points.subspan(133, 133),
+	for_each_landmark([xs = points.subspan(0, NUM_KEYPOINTS), ys = points.subspan(NUM_KEYPOINTS, NUM_KEYPOINTS),
 					   &mat, radius, thickness](Landmark landmark) {
 		const auto index = landmark.base_0_index();
 		auto x           = static_cast<int>(xs[index]);
@@ -426,7 +427,7 @@ void draw_whole_body_landmark_col_based(cv::Mat mat, std::span<const float> poin
 
 // row based, with shape of (133, 2)
 void draw_whole_body_skeleton_row_based(cv::Mat mat, std::span<const float> points, int thickness = 2) {
-	if (points.size() != 133 * 2) {
+	if (points.size() != NUM_KEYPOINTS * 2) {
 		throw std::invalid_argument("points.size() != 133 * 2");
 	}
 	for_each_bone([&points, &mat, thickness](Bone bone) {
@@ -437,4 +438,39 @@ void draw_whole_body_skeleton_row_based(cv::Mat mat, std::span<const float> poin
 		cv::line(mat, start, end, cv::Scalar(bone.color[0], bone.color[1], bone.color[2]), thickness);
 	});
 }
+
+void draw_whole_body_skeleton_col_based(cv::Mat mat, std::span<const float> points, int thickness = 2) {
+	if (points.size() != NUM_KEYPOINTS * 2) {
+		throw std::invalid_argument("points.size() != 133 * 2");
+	}
+	for_each_bone([xs = points.subspan(0, NUM_KEYPOINTS), ys = points.subspan(NUM_KEYPOINTS, NUM_KEYPOINTS),
+				   &mat, thickness](Bone bone) {
+		const auto start_index = bone.base_0_start();
+		const auto end_index   = bone.base_0_end();
+		const auto start       = cv::Point(static_cast<int>(xs[start_index]), static_cast<int>(ys[start_index]));
+		const auto end         = cv::Point(static_cast<int>(xs[end_index]), static_cast<int>(ys[end_index]));
+		cv::line(mat, start, end, cv::Scalar(bone.color[0], bone.color[1], bone.color[2]), thickness);
+	});
+}
+}
+
+extern "C" {
+void aux_img_draw_whole_body_skeleton(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options) {
+	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
+	auto points    = std::span(data, 133 * 2);
+	if (options.is_draw_landmarks) {
+		if (options.layout == aux_img::Layout::RowMajor) {
+			aux_img::draw_whole_body_landmark_row_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
+		} else {
+			aux_img::draw_whole_body_landmark_col_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
+		}
+	}
+	if (options.is_draw_bones) {
+		if (options.layout == aux_img::Layout::RowMajor) {
+			aux_img::draw_whole_body_skeleton_row_based(cv_mat, points, options.bone_thickness);
+		} else {
+			aux_img::draw_whole_body_skeleton_col_based(cv_mat, points, options.bone_thickness);
+		}
+	}
+};
 }
