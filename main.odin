@@ -151,11 +151,11 @@ gui_main :: proc() {
 					aux.Depth(info.depth),
 					aux.PixelFormat(info.pixel_format),
 				}
-				aux.write_text(
+				aux.mat_write_text(
 					mat,
-					"Hello, world!",
-					aux.Vec2i{100, 100},
-					aux.Vec3i{0, 250, 0},
+					cstring("Hello, world!"),
+					{100, 100},
+					{0, 250, 0},
 					3.0,
 					2.0,
 				)

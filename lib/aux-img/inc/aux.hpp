@@ -72,3 +72,14 @@ int opencv_format_from_pixel_format(PixelFormat pixel_format, Depth depth);
 // deallocated, so you should take care of it.
 cv::Mat fromSharedMat(SharedMat sharedMat);
 }
+
+
+extern "C" {
+void aux_img_write_text(aux_img::SharedMat mat,
+						const char *text,
+						aux_img::Vec2i pos,
+						aux_img::Vec3i color,
+						float scale,
+						float thickness,
+						bool bottomLeftOrigin);
+}
