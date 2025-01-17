@@ -30,14 +30,25 @@ GL_MINOR_VERSION :: 3
 GLSL_VERSION :: "#version 330"
 
 SHM_NAME :: "/tmp_vid"
-ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
+CV_MMAP_ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
+BIN_ZEROMQ_ADDR :: "ipc:///tmp/tmp_bin"
 
 gui_main :: proc() {
 	context.logger = log.create_console_logger(log.Level.Debug)
 	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
 	defer glfw.Terminate()
 
-	client := cvmmap.create(SHM_NAME, ZEROMQ_ADDR)
+	zmq_ctx := zmq.ctx_new()
+	defer zmq.ctx_term(zmq_ctx)
+	// http://wiki.zeromq.org/results:10gbe-tests
+	// https://zguide.zeromq.org/docs/chapter2/#Messaging-Patterns
+	// 
+	//  We will use these often, but `zmq_recv()` is bad at dealing with
+	//  arbitrary message sizes: it truncates messages to whatever buffer size
+	//  you provide. So there's a second API that works with `zmq_msg_t`
+	//  structures, with a richer but more difficult API
+
+	client := cvmmap.create(SHM_NAME, CV_MMAP_ZEROMQ_ADDR, zmq_ctx)
 	log.info("created")
 	defer {
 		cvmmap.destroy(client)
@@ -314,7 +325,7 @@ cli_main :: proc() {
 	})
 	log.info("signal handler set")
 
-	client := cvmmap.create(SHM_NAME, ZEROMQ_ADDR)
+	client := cvmmap.create(SHM_NAME, CV_MMAP_ZEROMQ_ADDR)
 	log.info("created")
 	defer {
 		cvmmap.destroy(client)

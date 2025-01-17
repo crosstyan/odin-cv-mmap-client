@@ -189,7 +189,8 @@ _polling_task :: proc(t: ^Thread) {
 	recv_sync_msg :: proc(skt: ^zmq.Socket) -> (SyncMessage, bool) {
 		sync_msg := SyncMessage{}
 		msg := zmq.Message{}
-		data, ok := zmq.recv_raw_msg_as_bytes(&msg, skt)
+		data, ok := zmq.recv_msg_bytes(&msg, skt)
+		defer zmq.msg_close(&msg)
 		if !ok {
 			return sync_msg, false
 		}
