@@ -11,25 +11,21 @@ foreign import auximg "libauximg.so"
 @(link_prefix = "aux_img_", default_calling_convention = "c")
 foreign auximg {
 	// @param bottomLeftOrigin When true, the image data origin is at the bottom-left corner. Otherwise, it is at the top-left corner
-	write_text :: proc(mat: SharedMat, text: cstring, pos: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, scale: c.float = 1.0, thickness: c.float = 1.0, bottomLeftOrigin: bool = false) ---
+	put_text :: proc(mat: SharedMat, text: cstring, pos: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, scale: c.float = 1.0, thickness: c.float = 1.0, bottomLeftOrigin: bool = false) ---
 }
 
-mat_write_text :: proc(mat: SharedMat, text: union {
-		string,
-		cstring,
-	}, pos: [2]i32, color: [3]f32 = {0, 0, 0}, scale: f32 = 1.0, thickness: f32 = 1.0, bottomLeftOrigin: bool = false) {
+mat_put_text :: proc(
+	mat: SharedMat,
+	text: cstring,
+	pos: [2]i32,
+	color: [3]f32 = {0, 0, 0},
+	scale: f32 = 1.0,
+	thickness: f32 = 1.0,
+	bottomLeftOrigin: bool = false,
+) {
 	pos_ := Vec2i{pos[0], pos[1]}
 	color_ := Vec3i{c.int(color[0]), c.int(color[1]), c.int(color[2])}
-	switch t in text {
-	case cstring:
-		write_text(mat, t, pos_, color_, scale, thickness, bottomLeftOrigin)
-	case string:
-		{
-			text_ := strings.clone_to_cstring(t)
-			defer delete(text_)
-			write_text(mat, text_, pos_, color_, scale, thickness, bottomLeftOrigin)
-		}
-	}
+	put_text(mat, text, pos_, color_, scale, thickness, bottomLeftOrigin)
 }
 
 // same as OpenCV's definitions

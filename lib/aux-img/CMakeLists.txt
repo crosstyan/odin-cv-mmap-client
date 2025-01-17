@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # endif()
 
 find_package(OpenCV REQUIRED)
-add_library(auximg SHARED src/aux.cpp)
+add_library(auximg SHARED src/aux.cpp src/skt.cpp)
 target_link_libraries(auximg PUBLIC ${OpenCV_LIBS})
 target_include_directories(auximg PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_include_directories(auximg PUBLIC inc)

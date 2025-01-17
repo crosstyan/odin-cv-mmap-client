@@ -75,11 +75,21 @@ cv::Mat fromSharedMat(SharedMat sharedMat);
 
 
 extern "C" {
-void aux_img_write_text(aux_img::SharedMat mat,
-						const char *text,
-						aux_img::Vec2i pos,
-						aux_img::Vec3i color,
-						float scale,
-						float thickness,
-						bool bottomLeftOrigin);
+void aux_img_put_text(aux_img::SharedMat mat,
+					  const char *text,
+					  aux_img::Vec2i pos,
+					  aux_img::Vec3i color,
+					  float scale,
+					  float thickness,
+					  bool bottomLeftOrigin);
+// caller should check the length of data to be
+// 133 * 2 * sizeof(float) = 1064 bytes
+// expecting row-major order
+// i.e. 133 keypoints, each with x and y coordinates
+// [[x1, y1], [x2, y2], ..., [x133, y133]] in a flat array
+//
+// This function will trust the caller and not check the length,
+// but take whatever is passed to it.
+void aux_img_draw_whole_body_skeleton(aux_img::SharedMat mat, const float *data);
+void aux_img_retangle(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3i color, float thickness);
 }

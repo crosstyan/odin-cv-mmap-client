@@ -55,13 +55,13 @@ struct aux_img_vec3i {
 };
 typedef struct aux_img_vec3i aux_img_vec3i_t;
 
-void aux_img_write_text(struct aux_img_shared_mat mat,
-						const char *text,
-						struct aux_img_vec2i pos,
-						struct aux_img_vec3i color,
-						float scale,
-						float thickness,
-						bool bottomLeftOrigin);
+void aux_img_put_text(struct aux_img_shared_mat mat,
+					  const char *text,
+					  struct aux_img_vec2i pos,
+					  struct aux_img_vec3i color,
+					  float scale,
+					  float thickness,
+					  bool bottomLeftOrigin);
 #ifdef __cplusplus
 }
 #endif
