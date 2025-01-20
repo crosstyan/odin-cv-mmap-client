@@ -12,8 +12,20 @@ foreign import auximg "libauximg.so"
 foreign auximg {
 	// @param bottomLeftOrigin When true, the image data origin is at the bottom-left corner. Otherwise, it is at the top-left corner
 	put_text_impl :: proc(mat: SharedMat, text: cstring, pos: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, scale: c.float = 1.0, thickness: c.float = 1.0, bottomLeftOrigin: bool = false) ---
-	rectangle_impl :: proc(mat: SharedMat, pos1: Vec2i, pos2: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, thickness: c.int = 1) ---
-	draw_whole_body_skeleton_impl :: proc(mat: SharedMat, data: rawptr, options: DrawSkeletonOptions) ---
+	rectangle_impl :: proc(mat: SharedMat, pt1: Vec2i, pt2: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, thickness: c.int = 1) ---
+	draw_whole_body_skeleton_impl :: proc(mat: SharedMat, data: [^]c.float, options: DrawSkeletonOptions) ---
+}
+
+NUM_KEYPOINTS :: 133
+NUM_KEYPOINTS_PAIR :: 2 * NUM_KEYPOINTS
+
+draw_whole_body_skeleton :: #force_inline proc(
+	mat: SharedMat,
+	keypoints: []f32,
+	options: DrawSkeletonOptions,
+) {
+	assert(len(keypoints) == NUM_KEYPOINTS_PAIR, "keypoints must have 2 * NUM_KEYPOINTS elements")
+	draw_whole_body_skeleton_impl(mat, raw_data(keypoints), options)
 }
 
 put_text :: #force_inline proc(
@@ -33,6 +45,22 @@ put_text :: #force_inline proc(
 		scale,
 		thickness,
 		bottomLeftOrigin,
+	)
+}
+
+rectangle :: #force_inline proc(
+	mat: SharedMat,
+	pt1: [2]i32,
+	pt2: [2]i32,
+	color: [3]f32 = {0, 0, 0},
+	thickness: i32 = 1,
+) {
+	rectangle_impl(
+		mat,
+		Vec2i{pt1[0], pt1[1]},
+		Vec2i{pt2[0], pt2[1]},
+		Vec3i{c.int(color[0]), c.int(color[1]), c.int(color[2])},
+		thickness,
 	)
 }
 

@@ -105,10 +105,9 @@ void aux_img_put_text_impl(aux_img::SharedMat mat, const char *text, aux_img::Ve
 }
 
 void aux_img_rectangle_impl(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3i color, float thickness) {
-	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
-	auto cv_start  = cv::Point(start.x, start.y);
-	auto cv_end    = cv::Point(end.x, end.y);
-	auto cv_color  = cv::Scalar(color.x, color.y, color.z);
-	cv::rectangle(cv_mat, cv_start, cv_end, cv_color, thickness);
+	cv::rectangle(aux_img::fromSharedMat(mat),
+				  cv::Point(start.x, start.y), cv::Point(end.x, end.y),
+				  cv::Scalar(color.x, color.y, color.z),
+				  thickness);
 }
 }
