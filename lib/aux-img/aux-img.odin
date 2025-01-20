@@ -11,10 +11,12 @@ foreign import auximg "libauximg.so"
 @(link_prefix = "aux_img_", default_calling_convention = "c")
 foreign auximg {
 	// @param bottomLeftOrigin When true, the image data origin is at the bottom-left corner. Otherwise, it is at the top-left corner
-	put_text :: proc(mat: SharedMat, text: cstring, pos: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, scale: c.float = 1.0, thickness: c.float = 1.0, bottomLeftOrigin: bool = false) ---
+	put_text_impl :: proc(mat: SharedMat, text: cstring, pos: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, scale: c.float = 1.0, thickness: c.float = 1.0, bottomLeftOrigin: bool = false) ---
+	rectangle_impl :: proc(mat: SharedMat, pos1: Vec2i, pos2: Vec2i, color: Vec3i = Vec3i{0, 0, 0}, thickness: c.int = 1) ---
+	draw_whole_body_skeleton_impl :: proc(mat: SharedMat, data: rawptr, options: DrawSkeletonOptions) ---
 }
 
-mat_put_text :: proc(
+put_text :: #force_inline proc(
 	mat: SharedMat,
 	text: cstring,
 	pos: [2]i32,
@@ -23,9 +25,15 @@ mat_put_text :: proc(
 	thickness: f32 = 1.0,
 	bottomLeftOrigin: bool = false,
 ) {
-	pos_ := Vec2i{pos[0], pos[1]}
-	color_ := Vec3i{c.int(color[0]), c.int(color[1]), c.int(color[2])}
-	put_text(mat, text, pos_, color_, scale, thickness, bottomLeftOrigin)
+	put_text_impl(
+		mat,
+		text,
+		Vec2i{pos[0], pos[1]},
+		Vec3i{c.int(color[0]), c.int(color[1]), c.int(color[2])},
+		scale,
+		thickness,
+		bottomLeftOrigin,
+	)
 }
 
 // same as OpenCV's definitions
@@ -72,4 +80,19 @@ Vec3i :: struct {
 	x: c.int,
 	y: c.int,
 	z: c.int,
+}
+
+
+Layout :: enum {
+	RowMajor = 0,
+	ColMajor = 1,
+}
+
+DrawSkeletonOptions :: struct {
+	layout:             Layout,
+	is_draw_landmarks:  bool,
+	is_draw_bones:      bool,
+	landmark_radius:    c.int,
+	landmark_thickness: c.int,
+	bone_thickness:     c.int,
 }

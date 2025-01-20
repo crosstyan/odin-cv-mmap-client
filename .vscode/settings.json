@@ -28,6 +28,7 @@
     "uintptr",
     "Viewports",
     "vsync",
+    "xyxy",
     "YUYV"
   ]
 }

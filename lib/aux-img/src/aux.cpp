@@ -97,14 +97,14 @@ cv::Mat fromSharedMat(SharedMat sharedMat) {
 
 extern "C" {
 // https://docs.opencv.org/4.x/d6/d6e/group__imgproc__draw.html#ga5126f47f883d730f633d74f07456c576
-void aux_img_put_text(aux_img::SharedMat mat, const char *text, aux_img::Vec2i pos, aux_img::Vec3i color, float scale, float thickness, bool bottomLeftOrigin) {
+void aux_img_put_text_impl(aux_img::SharedMat mat, const char *text, aux_img::Vec2i pos, aux_img::Vec3i color, float scale, float thickness, bool bottomLeftOrigin) {
 	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
 	auto cv_org    = cv::Point(pos.x, pos.y);
 	auto cv_color  = cv::Scalar(color.x, color.y, color.z);
 	cv::putText(cv_mat, text, cv_org, cv::FONT_HERSHEY_SIMPLEX, scale, cv_color, thickness, cv::LINE_8, bottomLeftOrigin);
 }
 
-void aux_img_retangle(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3i color, float thickness) {
+void aux_img_rectangle_impl(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3i color, float thickness) {
 	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
 	auto cv_start  = cv::Point(start.x, start.y);
 	auto cv_end    = cv::Point(end.x, end.y);

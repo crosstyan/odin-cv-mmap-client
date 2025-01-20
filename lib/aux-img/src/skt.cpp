@@ -455,7 +455,7 @@ void draw_whole_body_skeleton_col_based(cv::Mat mat, std::span<const float> poin
 }
 
 extern "C" {
-void aux_img_draw_whole_body_skeleton(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options) {
+void aux_img_draw_whole_body_skeleton_impl(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options) {
 	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
 	auto points    = std::span(data, 133 * 2);
 	if (options.is_draw_landmarks) {
