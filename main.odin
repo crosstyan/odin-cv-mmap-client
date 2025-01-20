@@ -33,6 +33,26 @@ SHM_NAME :: "/tmp_vid"
 CV_MMAP_ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
 BIN_ZEROMQ_ADDR :: "ipc:///tmp/tmp_bin"
 
+NUM_KEYPOINTS :: 133
+NUM_KEYPOINTS_PAIR :: 2 * NUM_KEYPOINTS
+
+PoseDetectionBits :: enum u8 {
+	ENABLED,
+	HAS_KEYPOINTS,
+	HAS_BBOX,
+}
+PoseDetectionFlag :: bit_set[PoseDetectionBits;u8]
+#assert(size_of(PoseDetectionFlag) == size_of(u8))
+
+// https://odin-lang.org/docs/overview/#bit-sets
+PoseDetectionInfo :: struct {
+	tracking_id:  u32,
+	// flags:        PoseDetectionFlag,
+	keypoints:    [NUM_KEYPOINTS_PAIR]f32,
+	// xyxy
+	bounding_box: [4]f32,
+}
+
 gui_main :: proc() {
 	context.logger = log.create_console_logger(log.Level.Debug)
 	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
@@ -354,6 +374,14 @@ cli_main :: proc() {
 	sync.cond_wait(&cv, &lk)
 }
 
+test_bits_set :: proc() {
+	// https://odin-lang.org/docs/overview/#transmute-operator
+	s := u8(PoseDetectionFlag{.ENABLED, .HAS_KEYPOINTS, .HAS_BBOX})
+	ss := transmute(PoseDetectionFlag)s
+	fmt.printfln("s={:#08b}; ss={}", s, ss)
+}
+
+
 // https://github.com/odin-lang/Odin/blob/master/core/flags/example/example.odin
 // https://pkg.odin-lang.org/core/flags/
 main :: proc() {
@@ -363,6 +391,7 @@ main :: proc() {
 	parse_style: flags.Parsing_Style = .Odin
 	opts := Options{}
 	flags.parse_or_exit(&opts, os.args, parse_style)
+	// https://github.com/odin-lang/Odin/blob/16eca1ded12373cd5a106d20796458a374940771/examples/demo/demo.odin#L1397
 	if opts.cli {
 		cli_main()
 	} else {
