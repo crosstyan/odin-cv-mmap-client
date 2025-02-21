@@ -2,16 +2,12 @@ package auximg
 import "core:encoding/endian"
 
 BoundingBox :: [4]f32
-// a row based skeleton
 Skeleton :: [NUM_KEYPOINTS_PAIR][2]f32
 
 PoseDetectionInfo :: struct {
-	frame_index:   u32,
-	tracking_id:   u32,
-	num_keypoints: u8,
-	num_boxes:     u8,
-	keypoints:     [dynamic]Skeleton,
-	bounding_box:  [dynamic]BoundingBox,
+	frame_index:  u32,
+	keypoints:    [dynamic]Skeleton,
+	bounding_box: [dynamic]BoundingBox,
 }
 
 destroy_pose_detection_info :: proc(info: PoseDetectionInfo) {
@@ -20,7 +16,7 @@ destroy_pose_detection_info :: proc(info: PoseDetectionInfo) {
 }
 
 unmarshal_pose_detection_info :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
-	MIN_SIZE :: 4 + 4 + 1 + 1
+	MIN_SIZE :: 4 + 1 + 1
 	info = PoseDetectionInfo{}
 	ok = true
 	if len(data) < MIN_SIZE {
@@ -34,16 +30,13 @@ unmarshal_pose_detection_info :: proc(data: []u8) -> (info: PoseDetectionInfo, o
 		return
 	}
 	rest = rest[4:]
-	tracking_id: u32
-	tracking_id, ok = endian.get_u32(rest[0:4], .Little)
-	if !ok {
-		return
-	}
-	rest = rest[4:]
+
 	num_keypoints := rest[0]
 	rest = rest[1:]
+
 	num_boxes := rest[0]
 	rest = rest[1:]
+
 	keypoints: [dynamic]Skeleton = nil
 	if num_keypoints != 0 {
 		KP_SIZE_PER_UNIT :: NUM_KEYPOINTS_PAIR * 2 * size_of(f32)
@@ -88,13 +81,6 @@ unmarshal_pose_detection_info :: proc(data: []u8) -> (info: PoseDetectionInfo, o
 			rest = rest[BB_SIZE_PER_UNIT:]
 		}
 	}
-	info = PoseDetectionInfo {
-		frame_index,
-		tracking_id,
-		num_keypoints,
-		num_boxes,
-		keypoints,
-		bounding_box,
-	}
+	info = PoseDetectionInfo{frame_index, keypoints, bounding_box}
 	return
 }
