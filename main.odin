@@ -131,7 +131,6 @@ gui_main :: proc() {
 		// Upload pixels into texture
 		gl.PixelStorei(gl.UNPACK_ROW_LENGTH, 0)
 		// https://docs.gl/gl3/glTexImage2D
-		// https://docs.gl/gl3/glTexImage2D
 		// https://github.com/drbrain/opengl/blob/master/ext/opengl/gl-enums.h
 		// https://stackoverflow.com/questions/4745264/opengl-gl-bgr-not-working-for-texture-internal-format
 		gl.TexImage2D(
@@ -353,13 +352,6 @@ cli_main :: proc() {
 		return
 	}
 	sync.cond_wait(&cv, &lk)
-}
-
-test_bits_set :: proc() {
-	// https://odin-lang.org/docs/overview/#transmute-operator
-	s := u8(PoseDetectionFlag{.ENABLED, .HAS_KEYPOINTS, .HAS_BBOX})
-	ss := transmute(PoseDetectionFlag)s
-	fmt.printfln("s={:#08b}; ss={}", s, ss)
 }
 
 

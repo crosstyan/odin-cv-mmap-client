@@ -1,26 +1,100 @@
 package auximg
+import "core:encoding/endian"
 
-// from LSB (0) to MSB (7)
-PoseDetectionBits :: enum u8 {
-	// should always be `1`
-	ENABLED          = 0,
-	// start of a group
-	SYN              = 1,
-	// end of a group
-	FIN              = 2,
-	// whether the keypoints are available (still be filled with zeros if not)
-	HAS_KEYPOINTS    = 3,
-	// whether the bounding box is available (`xyxy` format)
-	HAS_BBOX         = 4,
-	// whether the keypoints are in column major order (default is row major)
-	USE_COLUMN_MAJOR = 5,
+BoundingBox :: [4]f32
+// a row based skeleton
+Skeleton :: [NUM_KEYPOINTS_PAIR][2]f32
+
+PoseDetectionInfo :: struct {
+	frame_index:   u32,
+	tracking_id:   u32,
+	num_keypoints: u8,
+	num_boxes:     u8,
+	keypoints:     [dynamic]Skeleton,
+	bounding_box:  [dynamic]BoundingBox,
 }
-PoseDetectionFlag :: bit_set[PoseDetectionBits;u8]
-#assert(size_of(PoseDetectionFlag) == size_of(u8))
 
-PoseDetectionInfo :: struct #packed {
-	tracking_id:  u32,
-	flags:        PoseDetectionFlag,
-	keypoints:    [NUM_KEYPOINTS_PAIR]f32,
-	bounding_box: [4]f32,
+destroy_pose_detection_info :: proc(info: PoseDetectionInfo) {
+	delete(info.keypoints)
+	delete(info.bounding_box)
+}
+
+unmarshal_pose_detection_info :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
+	MIN_SIZE :: 4 + 4 + 1 + 1
+	info = PoseDetectionInfo{}
+	ok = true
+	if len(data) < MIN_SIZE {
+		ok = false
+		return
+	}
+	frame_index: u32
+	rest := data
+	frame_index, ok = endian.get_u32(rest[0:4], .Little)
+	if !ok {
+		return
+	}
+	rest = rest[4:]
+	tracking_id: u32
+	tracking_id, ok = endian.get_u32(rest[0:4], .Little)
+	if !ok {
+		return
+	}
+	rest = rest[4:]
+	num_keypoints := rest[0]
+	rest = rest[1:]
+	num_boxes := rest[0]
+	rest = rest[1:]
+	keypoints: [dynamic]Skeleton = nil
+	if num_keypoints != 0 {
+		KP_SIZE_PER_UNIT :: NUM_KEYPOINTS_PAIR * 2 * size_of(f32)
+		if len(rest) < int(num_keypoints) * KP_SIZE_PER_UNIT {
+			ok = false
+			return
+		}
+		keypoints = make([dynamic]Skeleton, num_keypoints)
+		defer {
+			if !ok {
+				delete(keypoints)
+			}
+		}
+		for i in 0 ..< num_keypoints {
+			rest_ptr := ([^]u8)(raw_data(rest))
+			kp_ptr := ([^]u8)(&keypoints[i])
+			r := rest_ptr[:KP_SIZE_PER_UNIT]
+			k := kp_ptr[:KP_SIZE_PER_UNIT]
+			copy(k, r)
+			rest = rest[KP_SIZE_PER_UNIT:]
+		}
+	}
+	bounding_box: [dynamic]BoundingBox = nil
+	if num_boxes != 0 {
+		BB_SIZE_PER_UNIT :: 4 * size_of(f32)
+		if len(rest) < int(num_boxes) * BB_SIZE_PER_UNIT {
+			ok = false
+			return
+		}
+		bounding_box = make([dynamic]BoundingBox, num_boxes)
+		defer {
+			if !ok {
+				delete(bounding_box)
+			}
+		}
+		for i in 0 ..< num_boxes {
+			rest_ptr := ([^]u8)(raw_data(rest))
+			bb_ptr := ([^]u8)(&bounding_box[i])
+			r := rest_ptr[:BB_SIZE_PER_UNIT]
+			b := bb_ptr[:BB_SIZE_PER_UNIT]
+			copy(b, r)
+			rest = rest[BB_SIZE_PER_UNIT:]
+		}
+	}
+	info = PoseDetectionInfo {
+		frame_index,
+		tracking_id,
+		num_keypoints,
+		num_boxes,
+		keypoints,
+		bounding_box,
+	}
+	return
 }
