@@ -10,6 +10,7 @@ import "core:slice"
 import "core:sync"
 import "core:sys/posix"
 import aux "lib/aux-img"
+import aux_skt "lib/aux-img/socket"
 import im "lib/odin-imgui"
 import "lib/odin-imgui/imgui_impl_glfw"
 import "lib/odin-imgui/imgui_impl_opengl3"
@@ -55,8 +56,22 @@ gui_main :: proc() {
 		cvmmap.destroy(client)
 		log.info("destroyed")
 	}
-	error_type, _ := cvmmap.init(client)
-	assert(error_type == cvmmap.CvMmapError.None, "failed to initialize cv-mmap client")
+	err := cvmmap.init(client)
+
+	// Check for errors using nil instead of NoError
+	if err != nil {
+		switch e in err {
+		case cvmmap.ZmqError:
+			log.errorf("ZMQ error during %s: code %d", e.operation, e.code)
+			assert(false, "failed to initialize cv-mmap client")
+		case cvmmap.ShmError:
+			log.errorf("SHM error during %s: errno %d", e.operation, e.errno)
+			assert(false, "failed to initialize cv-mmap client")
+		case cvmmap.StateError:
+			log.errorf("State error: %v", e)
+			assert(false, "failed to initialize cv-mmap client")
+		}
+	}
 
 	// Set Window Hints
 	// https://www.glfw.org/docs/latest/window_guide.html#window_hints
@@ -187,12 +202,23 @@ gui_main :: proc() {
 		ctx_opt.is_dirty = true
 	}
 	client.user_data = &render_ctx
-	error_type = cvmmap.start(client)
+	err = cvmmap.start(client)
 	defer {
 		cvmmap.stop(client)
 		log.info("stopped")
 	}
-	assert(error_type == cvmmap.CvMmapError.None, "failed to start cv-mmap client")
+
+	// Check for errors using nil instead of NoError
+	if err != nil {
+		#partial switch e in err {
+		case cvmmap.StateError:
+			log.errorf("State error: %v", e)
+			assert(false, "failed to start cv-mmap client")
+		case:
+			log.errorf("Unexpected error type: %v", err)
+			assert(false, "failed to start cv-mmap client")
+		}
+	}
 
 	handle_texture :: proc(self: ^VideoRenderContext) {
 		if !self._has_info_init {
@@ -335,22 +361,43 @@ cli_main :: proc() {
 		log.infof("[{}] FrameInfo={}; Len={}", frame_index, info, len(buffer))
 	}
 	client.on_frame = on_frame
-	error_type, code := cvmmap.init(client)
+	err := cvmmap.init(client)
 	log.info("initialized")
-	if error_type != cvmmap.CvMmapError.None {
-		log.errorf("Error={}; Code={}", error_type, code)
-		return
+
+	// Check for errors using nil instead of NoError
+	if err != nil {
+		#partial switch e in err {
+		case cvmmap.ZmqError:
+			log.errorf("ZMQ error during %s: code %d", e.operation, e.code)
+			return
+		case cvmmap.ShmError:
+			log.errorf("SHM error during %s: errno %d", e.operation, e.errno)
+			return
+		case cvmmap.StateError:
+			log.errorf("State error: %v", e)
+			return
+		}
 	}
-	error_type = cvmmap.start(client)
+
+	err = cvmmap.start(client)
 	log.info("started")
 	defer {
 		cvmmap.stop(client)
 		log.info("stopped")
 	}
-	if error_type != cvmmap.CvMmapError.None {
-		log.errorf("Error={}", error_type)
-		return
+
+	// Check for errors using nil instead of NoError
+	if err != nil {
+		#partial switch e in err {
+		case cvmmap.StateError:
+			log.errorf("State error: %v", e)
+			return
+		case:
+			log.errorf("Unexpected error type: %v", err)
+			return
+		}
 	}
+
 	sync.cond_wait(&cv, &lk)
 }
 

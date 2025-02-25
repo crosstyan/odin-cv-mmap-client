@@ -1,5 +1,8 @@
-package auximg
+package info
+import auximg ".."
 import "core:encoding/endian"
+
+NUM_KEYPOINTS_PAIR :: auximg.NUM_KEYPOINTS_PAIR
 
 BoundingBox :: [4]f32
 Skeleton :: [NUM_KEYPOINTS_PAIR][2]f32
@@ -10,12 +13,12 @@ PoseDetectionInfo :: struct {
 	bounding_box: [dynamic]BoundingBox,
 }
 
-destroy_pose_detection_info :: proc(info: PoseDetectionInfo) {
+destroy :: proc(info: PoseDetectionInfo) {
 	delete(info.keypoints)
 	delete(info.bounding_box)
 }
 
-unmarshal_pose_detection_info :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
+unmarshal :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
 	MIN_SIZE :: 4 + 1 + 1
 	info = PoseDetectionInfo{}
 	ok = true

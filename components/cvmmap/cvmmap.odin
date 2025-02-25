@@ -8,6 +8,7 @@ import "core:sys/linux"
 import "core:sys/posix"
 import "core:thread"
 
+ZmqError :: zmq.ZmqError
 FD :: posix.FD
 Thread :: thread.Thread
 FRAME_TOPIC_MAGIC :: 0x7d
@@ -71,6 +72,24 @@ CvMmapClient :: struct {
 	on_frame:      OnFrame_Proc,
 }
 
+// Refactored error types using tagged unions
+CvMmapError :: union {
+	ZmqError,
+	ShmError,
+	StateError,
+}
+
+ShmError :: struct {
+	errno: int,
+	what:  string,
+}
+
+StateError :: enum {
+	AlreadyInitialized,
+	NeverInitialized,
+	AlreadyRunning,
+}
+
 // create a new cv-mmap client
 //
 // will create a new ZMQ context if not provided
@@ -107,51 +126,36 @@ destroy :: proc(self: ^CvMmapClient) {
 	free(self)
 }
 
-CvMmapError :: enum {
-	None,
-	// see the additional error codes
-	Zmq,
-	// see the additional error codes (errno usually)
-	Shm,
-	AlreadyInitialized,
-	NeverInitialized,
-	AlreadyRunning,
-}
-
 // setup the ZMQ socket and Open the shared memory file descriptor
-init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
-	error_type = CvMmapError.None
-	code = 0
-
+init :: proc(self: ^CvMmapClient) -> (err: CvMmapError) {
 	if self._has_init {
-		error_type = CvMmapError.AlreadyInitialized
-		return
+		return StateError.AlreadyInitialized
 	}
 
 	zmq_addr_c := strings.clone_to_cstring(self._zmq_addr)
 	defer delete(zmq_addr_c)
 
-	code = cast(int)zmq.setsockopt_bool(self._zmq_sock, zmq.CONFLATE, true)
+	code := cast(int)zmq.setsockopt_bool(self._zmq_sock, zmq.CONFLATE, true)
 	if code != 0 {
-		error_type = CvMmapError.Zmq
-		return
+		return ZmqError{code, "setsockopt_bool"}
 	}
+
 	// http://api.zeromq.org/4-2:zmq-connect
 	code = cast(int)zmq.connect(self._zmq_sock, zmq_addr_c)
 	if code != 0 {
-		error_type = CvMmapError.Zmq
-		return
+		return ZmqError{code, "connect"}
 	}
+
 	is_disconnect_zmq := false
 	defer if is_disconnect_zmq {
 		zmq.disconnect(self._zmq_sock, zmq_addr_c)
 	}
+
 	topic := [1]u8{FRAME_TOPIC_MAGIC}
 	code = cast(int)zmq.setsockopt_bytes(self._zmq_sock, zmq.SUBSCRIBE, topic[:])
 	if code != 0 {
 		is_disconnect_zmq = true
-		error_type = CvMmapError.Zmq
-		return
+		return ZmqError{code, "setsockopt_bytes"}
 	}
 
 	shm_name_c := strings.clone_to_cstring(self._shm_name)
@@ -159,13 +163,12 @@ init :: proc(self: ^CvMmapClient) -> (error_type: CvMmapError, code: int) {
 	fd := posix.shm_open(shm_name_c, {}, {.IRUSR, .IWUSR, .IRGRP, .IWGRP, .IROTH, .IWOTH})
 	if fd == -1 {
 		is_disconnect_zmq = true
-		error_type = CvMmapError.Shm
-		code = cast(int)posix.get_errno()
-		return
+		return ShmError{cast(int)posix.get_errno(), "shm_open"}
 	}
+
 	self._shm_fd = fd
 	self._has_init = true
-	return
+	return nil
 }
 
 @(private)
@@ -263,19 +266,19 @@ _polling_task :: proc(t: ^Thread) {
 }
 
 // start the polling thread, initialize memory mapping
-start :: proc(self: ^CvMmapClient, init_context := context) -> CvMmapError {
+start :: proc(self: ^CvMmapClient, init_context := context) -> (err: CvMmapError) {
 	if !self._has_init {
-		return CvMmapError.NeverInitialized
+		return StateError.NeverInitialized
 	}
 	if self._is_running {
-		return CvMmapError.AlreadyRunning
+		return StateError.AlreadyRunning
 	}
 	self._is_running = true
 	self._polling_task = thread.create(_polling_task)
 	self._polling_task.?.data = self
 	self._polling_task.?.init_context = init_context
 	thread.start(self._polling_task.?)
-	return CvMmapError.None
+	return nil
 }
 
 // join the polling thread, destroy the thread and unmap the shared memory
