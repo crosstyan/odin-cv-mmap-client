@@ -62,10 +62,10 @@ gui_main :: proc() {
 	if err != nil {
 		switch e in err {
 		case cvmmap.ZmqError:
-			log.errorf("ZMQ error during %s: code %d", e.operation, e.code)
+			log.errorf("ZMQ error `%s` code %d", e.what, e.code)
 			assert(false, "failed to initialize cv-mmap client")
 		case cvmmap.ShmError:
-			log.errorf("SHM error during %s: errno %d", e.operation, e.errno)
+			log.errorf("SHM error `%s` errno %d", e.what, e.errno)
 			assert(false, "failed to initialize cv-mmap client")
 		case cvmmap.StateError:
 			log.errorf("State error: %v", e)
@@ -368,10 +368,10 @@ cli_main :: proc() {
 	if err != nil {
 		#partial switch e in err {
 		case cvmmap.ZmqError:
-			log.errorf("ZMQ error during %s: code %d", e.operation, e.code)
+			log.errorf("ZMQ error `%s` code %d", e.what, e.code)
 			return
 		case cvmmap.ShmError:
-			log.errorf("SHM error during %s: errno %d", e.operation, e.errno)
+			log.errorf("SHM error `%s` errno %d", e.what, e.errno)
 			return
 		case cvmmap.StateError:
 			log.errorf("State error: %v", e)
