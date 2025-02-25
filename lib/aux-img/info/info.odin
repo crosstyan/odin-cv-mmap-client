@@ -8,20 +8,20 @@ NUM_KEYPOINTS_PAIR :: auximg.NUM_KEYPOINTS_PAIR
 BoundingBox :: [4]f32
 Skeleton :: [NUM_KEYPOINTS_PAIR * 2]f32
 
-PoseDetectionInfo :: struct {
+PoseInfo :: struct {
 	frame_index:  u32,
 	keypoints:    [dynamic]Skeleton,
 	bounding_box: [dynamic]BoundingBox,
 }
 
-destroy :: proc(info: PoseDetectionInfo) {
+destroy :: proc(info: PoseInfo) {
 	delete(info.keypoints)
 	delete(info.bounding_box)
 }
 
-unmarshal :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
+unmarshal :: proc(data: []u8) -> (info: PoseInfo, ok: bool) {
 	MIN_SIZE :: 4 + 1 + 1
-	info = PoseDetectionInfo{}
+	info = PoseInfo{}
 	ok = true
 	if len(data) < MIN_SIZE {
 		ok = false
@@ -85,7 +85,7 @@ unmarshal :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
 			rest = rest[BB_SIZE_PER_UNIT:]
 		}
 	}
-	info = PoseDetectionInfo{frame_index, keypoints, bounding_box}
+	info = PoseInfo{frame_index, keypoints, bounding_box}
 	return
 }
 
@@ -97,7 +97,7 @@ DrawPoseOptions :: struct {
 	bounding_box_color:     [3]f32,
 }
 
-draw :: proc(mat: auximg.SharedMat, info: ^PoseDetectionInfo, opts: DrawPoseOptions) {
+draw :: proc(mat: auximg.SharedMat, info: ^PoseInfo, opts: DrawPoseOptions) {
 	if info == nil {
 		return
 	}

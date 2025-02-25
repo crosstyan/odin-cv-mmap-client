@@ -10,6 +10,7 @@ import "core:slice"
 import "core:sync"
 import "core:sys/posix"
 import aux "lib/aux-img"
+import aux_info "lib/aux-img/info"
 import aux_skt "lib/aux-img/socket"
 import im "lib/odin-imgui"
 import "lib/odin-imgui/imgui_impl_glfw"
@@ -56,21 +57,38 @@ gui_main :: proc() {
 		cvmmap.destroy(client)
 		log.info("destroyed")
 	}
-	err := cvmmap.init(client)
+	if err := cvmmap.init(client); err != nil {
+		log.errorf("failed to initialize cv-mmap client: %v", err)
+		assert(false, "failed to initialize cv-mmap client")
+	}
 
-	// Check for errors using nil instead of NoError
-	if err != nil {
-		switch e in err {
-		case cvmmap.ZmqError:
-			log.errorf("ZMQ error `%s` code %d", e.what, e.code)
-			assert(false, "failed to initialize cv-mmap client")
-		case cvmmap.ShmError:
-			log.errorf("SHM error `%s` errno %d", e.what, e.errno)
-			assert(false, "failed to initialize cv-mmap client")
-		case cvmmap.StateError:
-			log.errorf("State error: %v", e)
-			assert(false, "failed to initialize cv-mmap client")
+	bin_client := aux_skt.create(BIN_ZEROMQ_ADDR, zmq_ctx)
+	defer {
+		aux_skt.destroy(bin_client)
+		log.info("destroyed")
+	}
+
+	SharedPoseInfo :: struct {
+		mutex: sync.Mutex,
+		data:  Maybe(aux_info.PoseInfo),
+	}
+	pose_info := SharedPoseInfo{sync.Mutex{}, nil}
+	on_bin_frame := proc(info: aux_info.PoseInfo, user_data: rawptr) {
+		shared_pose_info := cast(^SharedPoseInfo)user_data
+		if sync.mutex_guard(&shared_pose_info.mutex) {
+			shared_pose_info.data = info
 		}
+	}
+	bin_client.on_info = on_bin_frame
+	bin_client.user_data = &pose_info
+
+	if err := aux_skt.start(bin_client); err != nil {
+		log.errorf("failed to start aux-skt client: %v", err)
+		assert(false, "failed to start aux-skt client")
+	}
+	defer {
+		aux_skt.stop(bin_client)
+		log.info("stopped")
 	}
 
 	// Set Window Hints
@@ -132,9 +150,17 @@ gui_main :: proc() {
 		is_dirty:       bool,
 		texture_index:  u32,
 		info:           TextureInfo,
+		pose_info:      ^SharedPoseInfo,
 	}
 
-	render_ctx := VideoRenderContext{false, false, false, 0, TextureInfo{nil, nil, 0, 0}}
+	render_ctx := VideoRenderContext {
+		false,
+		false,
+		false,
+		0,
+		TextureInfo{nil, nil, 0, 0},
+		&pose_info,
+	}
 	gl_texture_from_bgr_buffer :: proc(buffer: []u8, width: u32, height: u32) -> u32 {
 		// Create a OpenGL texture identifier
 		tid: u32
@@ -165,11 +191,12 @@ gui_main :: proc() {
 	client.on_frame =
 	proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
 		ctx_opt := cast(^VideoRenderContext)user_data
+		pose_info := ctx_opt.pose_info
 		assert(ctx_opt != nil, "invalid user_data")
 		when !MODIFY_IMAGE {
 			ctx_opt.info = TextureInfo{nil, buffer, u32(info.width), u32(info.height)}
 		} else {
-			modify :: proc(data: rawptr, info: cvmmap.FrameInfo) {
+			modify :: proc(data: rawptr, info: cvmmap.FrameInfo, pose_info: ^SharedPoseInfo) {
 				mat := aux.SharedMat {
 					data,
 					info.height,
@@ -177,7 +204,19 @@ gui_main :: proc() {
 					aux.Depth(info.depth),
 					aux.PixelFormat(info.pixel_format),
 				}
-				aux.put_text(mat, cstring("Hello, world!"), {100, 100}, {0, 250, 0}, 3.0, 2.0)
+				opts := aux_info.DrawPoseOptions {
+					landmark_radius        = 5,
+					landmark_thickness     = 2,
+					bone_thickness         = 2,
+					bounding_box_thickness = 2,
+					bounding_box_color     = {0, 250, 0},
+				}
+				if sync.mutex_guard(&pose_info.mutex) {
+					if pose_info.data != nil {
+						data := &(pose_info.data.?)
+						aux_info.draw(mat, data, opts)
+					}
+				}
 			}
 			if !ctx_opt._has_info_init {
 				loc_buf := make([]u8, len(buffer))
@@ -188,12 +227,12 @@ gui_main :: proc() {
 					u32(info.width),
 					u32(info.height),
 				}
-				modify(raw_data(ctx_opt.info.texture_buffer), info)
+				modify(raw_data(ctx_opt.info.texture_buffer), info, pose_info)
 			} else {
 				assert(ctx_opt.info.texture_buffer != nil, "invalid texture buffer")
 				assert(len(ctx_opt.info.texture_buffer) == len(buffer), "invalid buffer size")
 				copy(ctx_opt.info.texture_buffer, buffer)
-				modify(raw_data(ctx_opt.info.texture_buffer), info)
+				modify(raw_data(ctx_opt.info.texture_buffer), info, pose_info)
 			}
 		}
 		if !ctx_opt._has_info_init {
@@ -202,22 +241,13 @@ gui_main :: proc() {
 		ctx_opt.is_dirty = true
 	}
 	client.user_data = &render_ctx
-	err = cvmmap.start(client)
+	if err := cvmmap.start(client); err != nil {
+		log.errorf("failed to start cv-mmap client: %v", err)
+		assert(false, "failed to start cv-mmap client")
+	}
 	defer {
 		cvmmap.stop(client)
 		log.info("stopped")
-	}
-
-	// Check for errors using nil instead of NoError
-	if err != nil {
-		#partial switch e in err {
-		case cvmmap.StateError:
-			log.errorf("State error: %v", e)
-			assert(false, "failed to start cv-mmap client")
-		case:
-			log.errorf("Unexpected error type: %v", err)
-			assert(false, "failed to start cv-mmap client")
-		}
 	}
 
 	handle_texture :: proc(self: ^VideoRenderContext) {

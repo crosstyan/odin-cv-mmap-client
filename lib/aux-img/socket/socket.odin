@@ -6,9 +6,9 @@ import "core:log"
 import "core:strings"
 import "core:thread"
 
-PoseDetectionInfo :: info.PoseDetectionInfo
+PoseInfo :: info.PoseInfo
 Thread :: thread.Thread
-OnInfo_Proc :: proc(info: PoseDetectionInfo, user_data: rawptr)
+OnInfo_Proc :: proc(info: PoseInfo, user_data: rawptr)
 ZmqError :: zmq.ZmqError
 
 AuxImgClient :: struct {
