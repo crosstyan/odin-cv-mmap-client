@@ -1,11 +1,12 @@
 package info
 import auximg ".."
+import "core:c"
 import "core:encoding/endian"
 
 NUM_KEYPOINTS_PAIR :: auximg.NUM_KEYPOINTS_PAIR
 
 BoundingBox :: [4]f32
-Skeleton :: [NUM_KEYPOINTS_PAIR][2]f32
+Skeleton :: [NUM_KEYPOINTS_PAIR * 2]f32
 
 PoseDetectionInfo :: struct {
 	frame_index:  u32,
@@ -86,4 +87,44 @@ unmarshal :: proc(data: []u8) -> (info: PoseDetectionInfo, ok: bool) {
 	}
 	info = PoseDetectionInfo{frame_index, keypoints, bounding_box}
 	return
+}
+
+DrawPoseOptions :: struct {
+	landmark_radius:        int,
+	landmark_thickness:     int,
+	bone_thickness:         int,
+	bounding_box_thickness: int,
+	bounding_box_color:     [3]f32,
+}
+
+draw :: proc(mat: auximg.SharedMat, info: ^PoseDetectionInfo, opts: DrawPoseOptions) {
+	if info == nil {
+		return
+	}
+
+	skt_opts := auximg.DrawSkeletonOptions {
+		auximg.Layout.RowMajor,
+		true,
+		true,
+		c.int(opts.landmark_radius),
+		c.int(opts.landmark_thickness),
+		c.int(opts.bone_thickness),
+	}
+	for &kps in info.keypoints {
+		// kps is row major. i.e. [NUM_KEYPOINTS_PAIR][2]f32
+		auximg.draw_whole_body_skeleton(mat, kps[:], skt_opts)
+	}
+
+	for &bb in info.bounding_box {
+		// bb is [x1, y1, x2, y2]
+		pt1 := [2]i32{i32(bb[0]), i32(bb[1])}
+		pt2 := [2]i32{i32(bb[2]), i32(bb[3])}
+		auximg.rectangle(
+			mat,
+			pt1,
+			pt2,
+			opts.bounding_box_color,
+			c.int(opts.bounding_box_thickness),
+		)
+	}
 }
