@@ -54,6 +54,12 @@ struct Vec3i {
 	int z;
 };
 
+struct Vec3d {
+	double x;
+	double y;
+	double z;
+};
+
 const char *depth_to_string(const Depth depth);
 
 const char *cv_depth_to_string(const int depth);
@@ -72,7 +78,7 @@ int opencv_format_from_pixel_format(PixelFormat pixel_format, Depth depth);
 // deallocated, so you should take care of it.
 cv::Mat fromSharedMat(SharedMat sharedMat);
 
-enum class Layout {
+enum class Layout : uint8_t {
 	RowMajor = 0,
 	ColMajor,
 };
@@ -92,9 +98,9 @@ extern "C" {
 void aux_img_put_text_impl(aux_img::SharedMat mat,
 						   const char *text,
 						   aux_img::Vec2i pos,
-						   aux_img::Vec3i color,
-						   float scale,
-						   float thickness,
+						   aux_img::Vec3d color,
+						   double scale,
+						   int thickness,
 						   bool bottomLeftOrigin);
 // caller should check the length of data to be
 // 133 * 2 * sizeof(float) = 1064 bytes
@@ -105,5 +111,5 @@ void aux_img_put_text_impl(aux_img::SharedMat mat,
 // This function will trust the caller and not check the length,
 // but take whatever is passed to it.
 void aux_img_draw_whole_body_skeleton_impl(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options);
-void aux_img_rectangle_impl(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3i color, float thickness);
+void aux_img_rectangle_impl(aux_img::SharedMat mat, aux_img::Vec2i start, aux_img::Vec2i end, aux_img::Vec3d color, int thickness);
 }

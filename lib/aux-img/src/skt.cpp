@@ -1,6 +1,8 @@
 #include <cstdint>
 #include <cassert>
 #include <functional>
+#include <format>
+#include <print>
 #include <span>
 #include <aux.hpp>
 #include <opencv2/core.hpp>
@@ -433,8 +435,10 @@ void draw_whole_body_skeleton_row_based(cv::Mat mat, std::span<const float> poin
 	for_each_bone([&points, &mat, thickness](Bone bone) {
 		const auto start_index = bone.base_0_start();
 		const auto end_index   = bone.base_0_end();
-		const auto start       = cv::Point(static_cast<int>(points[start_index * 2]), static_cast<int>(points[start_index * 2 + 1]));
-		const auto end         = cv::Point(static_cast<int>(points[end_index * 2]), static_cast<int>(points[end_index * 2 + 1]));
+		// with stride of 2
+		// https://learn.microsoft.com/en-us/windows/win32/medfound/image-stride
+		const auto start = cv::Point(static_cast<int>(points[start_index * 2]), static_cast<int>(points[start_index * 2 + 1]));
+		const auto end   = cv::Point(static_cast<int>(points[end_index * 2]), static_cast<int>(points[end_index * 2 + 1]));
 		cv::line(mat, start, end, cv::Scalar(bone.color[0], bone.color[1], bone.color[2]), thickness);
 	});
 }
@@ -457,19 +461,19 @@ void draw_whole_body_skeleton_col_based(cv::Mat mat, std::span<const float> poin
 extern "C" {
 void aux_img_draw_whole_body_skeleton_impl(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options) {
 	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
-	auto points    = std::span(data, 133 * 2);
-	if (options.is_draw_landmarks) {
-		if (options.layout == aux_img::Layout::RowMajor) {
-			aux_img::draw_whole_body_landmark_row_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
-		} else {
-			aux_img::draw_whole_body_landmark_col_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
-		}
-	}
+	auto points    = std::span(data, aux_img::NUM_KEYPOINTS * 2);
 	if (options.is_draw_bones) {
 		if (options.layout == aux_img::Layout::RowMajor) {
 			aux_img::draw_whole_body_skeleton_row_based(cv_mat, points, options.bone_thickness);
 		} else {
 			aux_img::draw_whole_body_skeleton_col_based(cv_mat, points, options.bone_thickness);
+		}
+	}
+	if (options.is_draw_landmarks) {
+		if (options.layout == aux_img::Layout::RowMajor) {
+			aux_img::draw_whole_body_landmark_row_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
+		} else {
+			aux_img::draw_whole_body_landmark_col_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
 		}
 	}
 };

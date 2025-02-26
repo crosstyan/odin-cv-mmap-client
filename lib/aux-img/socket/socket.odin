@@ -8,7 +8,8 @@ import "core:thread"
 
 PoseInfo :: info.PoseInfo
 Thread :: thread.Thread
-OnInfo_Proc :: proc(info: PoseInfo, user_data: rawptr)
+// Returns true if the `PoseInfo` is moved (the callback won't free `PoseInfo` in this case, otherwise it will)
+OnInfo_Proc :: proc(info: PoseInfo, user_data: rawptr) -> (is_moved: bool)
 ZmqError :: zmq.ZmqError
 
 AuxImgClient :: struct {
@@ -17,10 +18,10 @@ AuxImgClient :: struct {
 	_zmq_sock:     ^zmq.Socket,
 	_polling_task: Maybe(^Thread),
 	_is_running:   bool,
+	_has_init:     bool,
 	// callbacks
 	user_data:     rawptr,
 	on_info:       OnInfo_Proc,
-	_has_init:     bool,
 }
 
 create :: proc(zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^AuxImgClient {
@@ -31,9 +32,10 @@ create :: proc(zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^AuxImgClient {
 	client._zmq_sock = zmq.socket(ctx, zmq.SUB)
 	client._polling_task = nil
 	client._is_running = false
+	client._has_init = false
+
 	client.user_data = nil
 	client.on_info = nil
-	client._has_init = false
 	return client
 }
 
@@ -57,7 +59,7 @@ StateError :: enum {
 }
 
 // Initialize the ZMQ socket and subscribe to messages
-init :: proc(self: ^AuxImgClient) -> (err: AuxImgError) {
+init :: proc(self: ^AuxImgClient) -> AuxImgError {
 	if self._has_init {
 		return StateError.AlreadyInitialized
 	}
@@ -72,7 +74,7 @@ init :: proc(self: ^AuxImgClient) -> (err: AuxImgError) {
 	}
 
 	// Connect to the ZMQ socket
-	code = cast(int)zmq.connect(self._zmq_sock, zmq_addr_c)
+	code = cast(int)zmq.bind(self._zmq_sock, zmq_addr_c)
 	if code != 0 {
 		return ZmqError{code, "connect"}
 	}
@@ -114,13 +116,16 @@ _polling_task :: proc(t: ^Thread) {
 
 		pose_info, unmarshal_ok := info.unmarshal(data)
 		if !unmarshal_ok {
-			log.errorf("Failed to unmarshal pose detection info")
+			log.errorf("failed to unmarshal pose info")
 			continue
 		}
-		defer info.destroy(pose_info)
 
+		is_moved := false
 		if client.on_info != nil {
-			client.on_info(pose_info, client.user_data)
+			is_moved = client.on_info(pose_info, client.user_data)
+		}
+		if !is_moved {
+			info.destroy(pose_info)
 		}
 	}
 }
@@ -133,10 +138,11 @@ start :: proc(self: ^AuxImgClient, init_context := context) -> (err: AuxImgError
 		return StateError.AlreadyRunning
 	}
 	self._is_running = true
-	self._polling_task = thread.create(_polling_task)
-	self._polling_task.?.data = self
-	self._polling_task.?.init_context = init_context
-	thread.start(self._polling_task.?)
+	task := thread.create(_polling_task)
+	task.data = self
+	task.init_context = init_context
+	thread.start(task)
+	self._polling_task = task
 	return nil
 }
 

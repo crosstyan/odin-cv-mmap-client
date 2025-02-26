@@ -2,11 +2,14 @@ package info
 import auximg ".."
 import "core:c"
 import "core:encoding/endian"
+import "core:fmt"
+import "core:log"
+import "core:strings"
 
-NUM_KEYPOINTS_PAIR :: auximg.NUM_KEYPOINTS_PAIR
+NUM_KEYPOINTS :: auximg.NUM_KEYPOINTS
 
-BoundingBox :: [4]f32
-Skeleton :: [NUM_KEYPOINTS_PAIR * 2]f32
+BoundingBox :: [4]u16
+Skeleton :: [NUM_KEYPOINTS * 2]f32
 
 PoseInfo :: struct {
 	frame_index:  u32,
@@ -19,6 +22,10 @@ destroy :: proc(info: PoseInfo) {
 	delete(info.bounding_box)
 }
 
+clone :: proc(info: PoseInfo) -> PoseInfo {
+	return PoseInfo{info.frame_index, info.keypoints, info.bounding_box}
+}
+
 unmarshal :: proc(data: []u8) -> (info: PoseInfo, ok: bool) {
 	MIN_SIZE :: 4 + 1 + 1
 	info = PoseInfo{}
@@ -29,7 +36,7 @@ unmarshal :: proc(data: []u8) -> (info: PoseInfo, ok: bool) {
 	}
 	frame_index: u32
 	rest := data
-	frame_index, ok = endian.get_u32(rest[0:4], .Little)
+	frame_index, ok = endian.get_u32(rest[:4], .Little)
 	if !ok {
 		return
 	}
@@ -43,7 +50,7 @@ unmarshal :: proc(data: []u8) -> (info: PoseInfo, ok: bool) {
 
 	keypoints: [dynamic]Skeleton = nil
 	if num_keypoints != 0 {
-		KP_SIZE_PER_UNIT :: NUM_KEYPOINTS_PAIR * 2 * size_of(f32)
+		KP_SIZE_PER_UNIT :: NUM_KEYPOINTS * 2 * size_of(f32)
 		if len(rest) < int(num_keypoints) * KP_SIZE_PER_UNIT {
 			ok = false
 			return
@@ -64,8 +71,17 @@ unmarshal :: proc(data: []u8) -> (info: PoseInfo, ok: bool) {
 		}
 	}
 	bounding_box: [dynamic]BoundingBox = nil
+	print_as_hex :: proc(index: int, data: []u8) {
+		b, err := strings.builder_make_none()
+		defer strings.builder_destroy(&b)
+		for d in data {
+			fmt.sbprintf(&b, "{:02x} ", d)
+		}
+		s := string(b.buf[:])
+		log.debugf("index={}, data={}", index, s)
+	}
 	if num_boxes != 0 {
-		BB_SIZE_PER_UNIT :: 4 * size_of(f32)
+		BB_SIZE_PER_UNIT :: 4 * size_of(u16)
 		if len(rest) < int(num_boxes) * BB_SIZE_PER_UNIT {
 			ok = false
 			return
@@ -94,7 +110,7 @@ DrawPoseOptions :: struct {
 	landmark_thickness:     int,
 	bone_thickness:         int,
 	bounding_box_thickness: int,
-	bounding_box_color:     [3]f32,
+	bounding_box_color:     [3]c.double,
 }
 
 draw :: proc(mat: auximg.SharedMat, info: ^PoseInfo, opts: DrawPoseOptions) {
@@ -117,8 +133,8 @@ draw :: proc(mat: auximg.SharedMat, info: ^PoseInfo, opts: DrawPoseOptions) {
 
 	for &bb in info.bounding_box {
 		// bb is [x1, y1, x2, y2]
-		pt1 := [2]i32{i32(bb[0]), i32(bb[1])}
-		pt2 := [2]i32{i32(bb[2]), i32(bb[3])}
+		pt1 := [2]c.int{c.int(bb[0]), c.int(bb[1])}
+		pt2 := [2]c.int{c.int(bb[2]), c.int(bb[3])}
 		auximg.rectangle(
 			mat,
 			pt1,

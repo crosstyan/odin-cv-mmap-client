@@ -73,14 +73,23 @@ gui_main :: proc() {
 		data:  Maybe(aux_info.PoseInfo),
 	}
 	pose_info := SharedPoseInfo{sync.Mutex{}, nil}
-	on_bin_frame := proc(info: aux_info.PoseInfo, user_data: rawptr) {
+	on_bin_frame :: proc(info: aux_info.PoseInfo, user_data: rawptr) -> bool {
 		shared_pose_info := cast(^SharedPoseInfo)user_data
 		if sync.mutex_guard(&shared_pose_info.mutex) {
+			if shared_pose_info.data != nil {
+				aux_info.destroy(shared_pose_info.data.?)
+			}
 			shared_pose_info.data = info
 		}
+		return true
 	}
 	bin_client.on_info = on_bin_frame
 	bin_client.user_data = &pose_info
+
+	if err := aux_skt.init(bin_client); err != nil {
+		log.errorf("failed to initialize aux-skt client: %v", err)
+		assert(false, "failed to initialize aux-skt client")
+	}
 
 	if err := aux_skt.start(bin_client); err != nil {
 		log.errorf("failed to start aux-skt client: %v", err)
@@ -206,9 +215,9 @@ gui_main :: proc() {
 				}
 				opts := aux_info.DrawPoseOptions {
 					landmark_radius        = 5,
-					landmark_thickness     = 2,
+					landmark_thickness     = -1,
 					bone_thickness         = 2,
-					bounding_box_thickness = 2,
+					bounding_box_thickness = 5,
 					bounding_box_color     = {0, 250, 0},
 				}
 				if sync.mutex_guard(&pose_info.mutex) {
