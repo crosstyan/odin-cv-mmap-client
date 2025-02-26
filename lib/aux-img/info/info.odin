@@ -23,7 +23,13 @@ destroy :: proc(info: PoseInfo) {
 }
 
 clone :: proc(info: PoseInfo) -> PoseInfo {
-	return PoseInfo{info.frame_index, info.keypoints, info.bounding_box}
+	keypoints_copy := make([dynamic]Skeleton, len(info.keypoints))
+	copy(keypoints_copy[:], info.keypoints[:])
+
+	bounding_box_copy := make([dynamic]BoundingBox, len(info.bounding_box))
+	copy(bounding_box_copy[:], info.bounding_box[:])
+
+	return PoseInfo{info.frame_index, keypoints_copy, bounding_box_copy}
 }
 
 unmarshal :: proc(data: []u8) -> (info: PoseInfo, ok: bool) {
