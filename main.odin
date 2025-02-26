@@ -35,10 +35,16 @@ SHM_NAME :: "/tmp_vid"
 CV_MMAP_ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
 BIN_ZEROMQ_ADDR :: "ipc:///tmp/tmp_bin"
 
+// check and unset the flag, return the original flag value
+check_and_unset :: proc(flag: ^bool) -> bool {
+	r := flag^
+	flag^ = false
+	return r
+}
 
 gui_main :: proc() {
 	context.logger = log.create_console_logger(log.Level.Debug)
-	assert(cast(bool)glfw.Init(), "Failed to initialize GLFW")
+	assert(cast(bool)glfw.Init(), "failed to initialize GLFW")
 	defer glfw.Terminate()
 
 	zmq_ctx := zmq.ctx_new()
@@ -139,9 +145,9 @@ gui_main :: proc() {
 	}
 
 	im.StyleColorsDark()
-	assert(imgui_impl_glfw.InitForOpenGL(window, true), "Failed to initialize ImGui GLFW")
+	assert(imgui_impl_glfw.InitForOpenGL(window, true), "failed to initialize ImGui GLFW")
 	defer imgui_impl_glfw.Shutdown()
-	assert(imgui_impl_opengl3.Init(GLSL_VERSION), "Failed to initialize ImGui OpenGL3")
+	assert(imgui_impl_opengl3.Init(GLSL_VERSION), "failed to initialize ImGui OpenGL3")
 	defer imgui_impl_opengl3.Shutdown()
 
 	TextureInfo :: struct {
@@ -276,8 +282,7 @@ gui_main :: proc() {
 			return
 		}
 
-		if self.is_dirty {
-			self.is_dirty = false
+		if check_and_unset(&self.is_dirty) {
 			// https://learnopengl.com/Getting-started/Textures
 			// https://github.com/ocornut/imgui/wiki/Image-Loading-and-Displaying-Examples
 			// glTexSubImage2D to update the texture (I'm assuming the parameters are the same)
@@ -378,8 +383,7 @@ cli_main :: proc() {
 	@(static) cv := sync.Cond{}
 	context.logger = log.create_console_logger(log.Level.Debug)
 
-	// create a copy of the context to be (with logging)
-	// available until the end of `main` stack frame
+	// for logging in the signal handler
 	local_ctx: runtime.Context = context
 	@(static) ctx: ^runtime.Context
 	ctx = &local_ctx
@@ -401,40 +405,15 @@ cli_main :: proc() {
 	}
 	client.on_frame = on_frame
 	err := cvmmap.init(client)
+	assert(err == nil, fmt.tprintf("failed to initialize cv-mmap client: %v", err))
 	log.info("initialized")
-
-	// Check for errors using nil instead of NoError
-	if err != nil {
-		#partial switch e in err {
-		case cvmmap.ZmqError:
-			log.errorf("ZMQ error `%s` code %d", e.what, e.code)
-			return
-		case cvmmap.ShmError:
-			log.errorf("SHM error `%s` errno %d", e.what, e.errno)
-			return
-		case cvmmap.StateError:
-			log.errorf("State error: %v", e)
-			return
-		}
-	}
 
 	err = cvmmap.start(client)
 	log.info("started")
+	assert(err == nil, fmt.tprintf("failed to start cv-mmap client: %v", err))
 	defer {
 		cvmmap.stop(client)
 		log.info("stopped")
-	}
-
-	// Check for errors using nil instead of NoError
-	if err != nil {
-		#partial switch e in err {
-		case cvmmap.StateError:
-			log.errorf("State error: %v", e)
-			return
-		case:
-			log.errorf("Unexpected error type: %v", err)
-			return
-		}
 	}
 
 	sync.cond_wait(&cv, &lk)
