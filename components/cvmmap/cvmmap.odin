@@ -55,21 +55,22 @@ SyncMessage :: struct #packed {
 OnFrame_Proc :: proc(info: FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr)
 
 CvMmapClient :: struct {
-	_shm_name:     string,
-	_zmq_addr:     string,
-	_zmq_ctx:      ^zmq.Context,
-	_zmq_sock:     ^zmq.Socket,
-	_shm_size:     Maybe(uint),
-	_shm_fd:       Maybe(posix.FD),
-	_shm_ptr:      Maybe([^]u8),
-	_has_init:     bool,
+	_shm_name:         string,
+	_zmq_addr:         string,
+	_zmq_ctx:          ^zmq.Context,
+	_is_owned_zmq_ctx: bool,
+	_zmq_sock:         ^zmq.Socket,
+	_shm_size:         Maybe(uint),
+	_shm_fd:           Maybe(posix.FD),
+	_shm_ptr:          Maybe([^]u8),
+	_has_init:         bool,
 	// task
-	_polling_task: Maybe(^Thread),
-	_is_running:   bool,
+	_polling_task:     Maybe(^Thread),
+	_is_running:       bool,
 	// callbacks
 	// used in `on_frame` callback
-	user_data:     rawptr,
-	on_frame:      OnFrame_Proc,
+	user_data:         rawptr,
+	on_frame:          OnFrame_Proc,
 }
 
 // Refactored error types using tagged unions
@@ -98,10 +99,13 @@ StateError :: enum {
 // create -> init -> setting callbacks -> start -> stop -> destroy
 create :: proc(shm_name: string, zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^CvMmapClient {
 	ctx := zmq_ctx if zmq_ctx != nil else zmq.ctx_new()
+	is_owned_zmq_ctx := zmq_ctx == nil
+
 	client := new(CvMmapClient)
 	client._shm_name = shm_name
 	client._zmq_addr = zmq_addr
 	client._zmq_ctx = ctx
+	client._is_owned_zmq_ctx = is_owned_zmq_ctx
 	client._zmq_sock = zmq.socket(ctx, zmq.SUB)
 	client._shm_size = nil
 	client._shm_fd = nil
@@ -122,7 +126,9 @@ destroy :: proc(self: ^CvMmapClient) {
 		posix.close(self._shm_fd.?)
 	}
 	zmq.close(self._zmq_sock)
-	zmq.ctx_term(self._zmq_ctx)
+	if self._is_owned_zmq_ctx {
+		zmq.ctx_term(self._zmq_ctx)
+	}
 	free(self)
 }
 

@@ -55,7 +55,7 @@ gui_main :: proc() {
 	log.info("created")
 	defer {
 		cvmmap.destroy(client)
-		log.info("destroyed")
+		log.info("cv-mmap client destroyed")
 	}
 	if err := cvmmap.init(client); err != nil {
 		log.errorf("failed to initialize cv-mmap client: %v", err)
@@ -65,7 +65,7 @@ gui_main :: proc() {
 	bin_client := aux_skt.create(BIN_ZEROMQ_ADDR, zmq_ctx)
 	defer {
 		aux_skt.destroy(bin_client)
-		log.info("destroyed")
+		log.info("bin socket destroyed")
 	}
 
 	SharedPoseInfo :: struct {
@@ -97,7 +97,7 @@ gui_main :: proc() {
 	}
 	defer {
 		aux_skt.stop(bin_client)
-		log.info("stopped")
+		log.info("bin socket stopped")
 	}
 
 	// Set Window Hints
@@ -256,7 +256,7 @@ gui_main :: proc() {
 	}
 	defer {
 		cvmmap.stop(client)
-		log.info("stopped")
+		log.info("cv-mmap client stopped")
 	}
 
 	handle_texture :: proc(self: ^VideoRenderContext) {

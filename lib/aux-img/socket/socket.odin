@@ -13,22 +13,26 @@ OnInfo_Proc :: proc(info: PoseInfo, user_data: rawptr) -> (is_moved: bool)
 ZmqError :: zmq.ZmqError
 
 AuxImgClient :: struct {
-	_zmq_addr:     string,
-	_zmq_ctx:      ^zmq.Context,
-	_zmq_sock:     ^zmq.Socket,
-	_polling_task: Maybe(^Thread),
-	_is_running:   bool,
-	_has_init:     bool,
+	_zmq_addr:         string,
+	_zmq_ctx:          ^zmq.Context,
+	_is_owned_zmq_ctx: bool,
+	_zmq_sock:         ^zmq.Socket,
+	_polling_task:     Maybe(^Thread),
+	_is_running:       bool,
+	_has_init:         bool,
 	// callbacks
-	user_data:     rawptr,
-	on_info:       OnInfo_Proc,
+	user_data:         rawptr,
+	on_info:           OnInfo_Proc,
 }
 
 create :: proc(zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^AuxImgClient {
 	ctx := zmq_ctx if zmq_ctx != nil else zmq.ctx_new()
+	is_owned_zmq_ctx := zmq_ctx == nil
+
 	client := new(AuxImgClient)
 	client._zmq_addr = zmq_addr
 	client._zmq_ctx = ctx
+	client._is_owned_zmq_ctx = is_owned_zmq_ctx
 	client._zmq_sock = zmq.socket(ctx, zmq.SUB)
 	client._polling_task = nil
 	client._is_running = false
@@ -42,7 +46,9 @@ create :: proc(zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^AuxImgClient {
 destroy :: proc(self: ^AuxImgClient) {
 	stop(self)
 	zmq.close(self._zmq_sock)
-	zmq.ctx_term(self._zmq_ctx)
+	if self._is_owned_zmq_ctx {
+		zmq.ctx_term(self._zmq_ctx)
+	}
 	free(self)
 }
 
