@@ -131,7 +131,7 @@ _polling_task :: proc(t: ^Thread) {
 			is_moved = client.on_info(pose_info, client.user_data)
 		}
 		if !is_moved {
-			info.destroy(pose_info)
+			info.destroy(&pose_info)
 		}
 	}
 }

@@ -82,8 +82,8 @@ gui_main :: proc() {
 	on_bin_frame :: proc(info: aux_info.PoseInfo, user_data: rawptr) -> bool {
 		shared_pose_info := cast(^SharedPoseInfo)user_data
 		if sync.mutex_guard(&shared_pose_info.mutex) {
-			if shared_pose_info.data != nil {
-				aux_info.destroy(shared_pose_info.data.?)
+			if data, ok := shared_pose_info.data.?; ok {
+				aux_info.destroy(&data)
 			}
 			shared_pose_info.data = info
 		}
@@ -227,9 +227,8 @@ gui_main :: proc() {
 					bounding_box_color     = {0, 250, 0},
 				}
 				if sync.mutex_guard(&pose_info.mutex) {
-					if pose_info.data != nil {
-						data := &(pose_info.data.?)
-						aux_info.draw(mat, data, opts)
+					if data, ok := pose_info.data.?; ok {
+						aux_info.draw(mat, &data, opts)
 					}
 				}
 			}

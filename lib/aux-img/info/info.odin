@@ -17,9 +17,11 @@ PoseInfo :: struct {
 	bounding_box: [dynamic]BoundingBox,
 }
 
-destroy :: proc(info: PoseInfo) {
+destroy :: proc(info: ^PoseInfo) {
 	delete(info.keypoints)
 	delete(info.bounding_box)
+	info.keypoints = nil
+	info.bounding_box = nil
 }
 
 clone :: proc(info: PoseInfo) -> PoseInfo {
