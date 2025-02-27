@@ -211,7 +211,12 @@ gui_main :: proc() {
 		when !MODIFY_IMAGE {
 			ctx_opt.info = TextureInfo{nil, buffer, u32(info.width), u32(info.height)}
 		} else {
-			modify :: proc(data: rawptr, info: cvmmap.FrameInfo, pose_info: ^SharedPoseInfo) {
+			modify :: proc(
+				data: rawptr,
+				info: cvmmap.FrameInfo,
+				pose_info: ^SharedPoseInfo,
+				frame_index: u32,
+			) {
 				mat := aux.SharedMat {
 					data,
 					info.height,
@@ -228,7 +233,12 @@ gui_main :: proc() {
 				}
 				if sync.mutex_guard(&pose_info.mutex) {
 					if data, ok := pose_info.data.?; ok {
-						aux_info.draw(mat, &data, opts)
+						in_range :: proc(val: u32, min: u32, max: u32) -> bool {
+							return val >= min && val <= max
+						}
+						if in_range(data.frame_index, frame_index - 6, frame_index + 6) {
+							aux_info.draw(mat, &data, opts)
+						}
 					}
 				}
 			}
@@ -241,12 +251,12 @@ gui_main :: proc() {
 					u32(info.width),
 					u32(info.height),
 				}
-				modify(raw_data(ctx_opt.info.texture_buffer), info, pose_info)
+				modify(raw_data(ctx_opt.info.texture_buffer), info, pose_info, frame_index)
 			} else {
 				assert(ctx_opt.info.texture_buffer != nil, "invalid texture buffer")
 				assert(len(ctx_opt.info.texture_buffer) == len(buffer), "invalid buffer size")
 				copy(ctx_opt.info.texture_buffer, buffer)
-				modify(raw_data(ctx_opt.info.texture_buffer), info, pose_info)
+				modify(raw_data(ctx_opt.info.texture_buffer), info, pose_info, frame_index)
 			}
 		}
 		if !ctx_opt._has_info_init {
