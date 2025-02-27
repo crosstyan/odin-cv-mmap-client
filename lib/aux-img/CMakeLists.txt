@@ -7,10 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(CImg INTERFACE)
 target_include_directories(CImg INTERFACE third-party/CImg)
 
-find_package(OpenCV REQUIRED)
 add_library(auximg SHARED src/aux.cpp src/skt.cpp)
-target_link_libraries(auximg PUBLIC ${OpenCV_LIBS} CImg)
-target_include_directories(auximg PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(auximg PUBLIC CImg)
 target_include_directories(auximg PUBLIC inc)
 
 add_custom_command(TARGET auximg POST_BUILD

@@ -3,9 +3,8 @@
 #include <functional>
 #include <span>
 #include <aux.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
 #include <CImg.h>
+#include <stdexcept>
 
 #ifndef M_COLOR_SPINE
 #define M_COLOR_SPINE 138, 201, 38
@@ -365,7 +364,6 @@ constexpr Bone hand_bones[] = {
 	{132, 133, {M_COLOR_FINGERS}},
 };
 
-
 auto for_each_landmark(std::function<void(Landmark)> callback) -> void {
 	for (const auto &landmark : body_landmarks) {
 		callback(landmark);
@@ -399,8 +397,100 @@ void for_each_with_pair(std::span<const float> points, std::function<void(std::t
 	}
 }
 
+// Get the number of channels from pixel format
+int channels_from_pixel_format(PixelFormat pixel_format);
+
+// Template function to create a CImg view of SharedMat data with appropriate type
+template <typename T>
+cimg_library::CImg<T> createCImgViewTyped(SharedMat &mat);
+
+// Helper function to create a CImg view of SharedMat data
+cimg_library::CImg<uint8_t> createCImgView(SharedMat &mat);
+
+// Helper function to prepare color array based on pixel format
+uint8_t *prepareColorArray(const int color[3], PixelFormat pixel_format, int channels) {
+	uint8_t *col = new uint8_t[channels];
+
+	// Fill color array based on pixel format
+	switch (pixel_format) {
+	case PixelFormat::RGB:
+		col[0] = static_cast<uint8_t>(color[0]); // R
+		col[1] = static_cast<uint8_t>(color[1]); // G
+		col[2] = static_cast<uint8_t>(color[2]); // B
+		break;
+
+	case PixelFormat::BGR:
+		col[0] = static_cast<uint8_t>(color[2]); // B
+		col[1] = static_cast<uint8_t>(color[1]); // G
+		col[2] = static_cast<uint8_t>(color[0]); // R
+		break;
+
+	case PixelFormat::RGBA:
+		col[0] = static_cast<uint8_t>(color[0]); // R
+		col[1] = static_cast<uint8_t>(color[1]); // G
+		col[2] = static_cast<uint8_t>(color[2]); // B
+		col[3] = 255;                            // A (fully opaque)
+		break;
+
+	case PixelFormat::BGRA:
+		col[0] = static_cast<uint8_t>(color[2]); // B
+		col[1] = static_cast<uint8_t>(color[1]); // G
+		col[2] = static_cast<uint8_t>(color[0]); // R
+		col[3] = 255;                            // A (fully opaque)
+		break;
+
+	case PixelFormat::GRAY:
+		// Convert RGB to grayscale using standard formula
+		col[0] = static_cast<uint8_t>(0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]);
+		break;
+
+	default:
+		// For other formats, just use the first channel
+		col[0] = static_cast<uint8_t>(color[0]);
+		for (int i = 1; i < channels; i++) {
+			col[i] = static_cast<uint8_t>(i < 3 ? (i == 1 ? color[1] : color[2]) : 255);
+		}
+	}
+
+	return col;
+}
+
+// Helper function to draw a circle directly on the SharedMat data
+void drawCircle(SharedMat &mat, int x, int y, int radius, const int color[3], int thickness) {
+	// Create a CImg view of the existing data without copying
+	auto img = createCImgView(mat);
+
+	// For simplicity, use color as-is assuming RGB order
+	const unsigned char col[3] = {
+		static_cast<unsigned char>(color[0]),
+		static_cast<unsigned char>(color[1]),
+		static_cast<unsigned char>(color[2])};
+
+	if (thickness < 0) {
+		// Filled circle
+		img.draw_circle(x, y, radius, col);
+	} else {
+		// Outlined circle
+		img.draw_circle(x, y, radius, col, 1.0f, thickness);
+	}
+}
+
+// Helper function to draw a line directly on the SharedMat data
+void drawLine(SharedMat &mat, int x1, int y1, int x2, int y2, const int color[3], int thickness) {
+	// Create a CImg view of the existing data without copying
+	auto img = createCImgView(mat);
+
+	// For simplicity, use color as-is assuming RGB order
+	const unsigned char col[3] = {
+		static_cast<unsigned char>(color[0]),
+		static_cast<unsigned char>(color[1]),
+		static_cast<unsigned char>(color[2])};
+
+	img.draw_line(x1, y1, x2, y2, col, thickness);
+}
+
 // row based, with shape of (133, 2)
-void draw_whole_body_landmark_row_based(cv::Mat mat, std::span<const float> points, int radius = 3, int thickness = -1) {
+void draw_whole_body_landmark_row_based(SharedMat &mat, std::span<const float> points, int radius = 3, int thickness = -1) {
 	if (points.size() != NUM_KEYPOINTS * 2) {
 		throw std::invalid_argument("points.size() != 133 * 2");
 	}
@@ -408,12 +498,12 @@ void draw_whole_body_landmark_row_based(cv::Mat mat, std::span<const float> poin
 		const auto index = landmark.base_0_index();
 		auto x           = static_cast<int>(points[index * 2]);
 		auto y           = static_cast<int>(points[index * 2 + 1]);
-		cv::circle(mat, {x, y}, radius, cv::Scalar(landmark.color[0], landmark.color[1], landmark.color[2]), thickness);
+		drawCircle(mat, x, y, radius, landmark.color, thickness);
 	});
 }
 
 // column based, with shape of (2, 133)
-void draw_whole_body_landmark_col_based(cv::Mat mat, std::span<const float> points, int radius = 3, int thickness = -1) {
+void draw_whole_body_landmark_col_based(SharedMat &mat, std::span<const float> points, int radius = 3, int thickness = -1) {
 	if (points.size() != NUM_KEYPOINTS * 2) {
 		throw std::invalid_argument("points.size() != 2 * 133");
 	}
@@ -422,12 +512,12 @@ void draw_whole_body_landmark_col_based(cv::Mat mat, std::span<const float> poin
 		const auto index = landmark.base_0_index();
 		auto x           = static_cast<int>(xs[index]);
 		auto y           = static_cast<int>(ys[index]);
-		cv::circle(mat, {x, y}, radius, cv::Scalar(landmark.color[0], landmark.color[1], landmark.color[2]), thickness);
+		drawCircle(mat, x, y, radius, landmark.color, thickness);
 	});
 }
 
 // row based, with shape of (133, 2)
-void draw_whole_body_skeleton_row_based(cv::Mat mat, std::span<const float> points, int thickness = 2) {
+void draw_whole_body_skeleton_row_based(SharedMat &mat, std::span<const float> points, int thickness = 2) {
 	if (points.size() != NUM_KEYPOINTS * 2) {
 		throw std::invalid_argument("points.size() != 133 * 2");
 	}
@@ -435,14 +525,15 @@ void draw_whole_body_skeleton_row_based(cv::Mat mat, std::span<const float> poin
 		const auto start_index = bone.base_0_start();
 		const auto end_index   = bone.base_0_end();
 		// with stride of 2
-		// https://learn.microsoft.com/en-us/windows/win32/medfound/image-stride
-		const auto start = cv::Point(static_cast<int>(points[start_index * 2]), static_cast<int>(points[start_index * 2 + 1]));
-		const auto end   = cv::Point(static_cast<int>(points[end_index * 2]), static_cast<int>(points[end_index * 2 + 1]));
-		cv::line(mat, start, end, cv::Scalar(bone.color[0], bone.color[1], bone.color[2]), thickness);
+		const auto start_x = static_cast<int>(points[start_index * 2]);
+		const auto start_y = static_cast<int>(points[start_index * 2 + 1]);
+		const auto end_x   = static_cast<int>(points[end_index * 2]);
+		const auto end_y   = static_cast<int>(points[end_index * 2 + 1]);
+		drawLine(mat, start_x, start_y, end_x, end_y, bone.color, thickness);
 	});
 }
 
-void draw_whole_body_skeleton_col_based(cv::Mat mat, std::span<const float> points, int thickness = 2) {
+void draw_whole_body_skeleton_col_based(SharedMat &mat, std::span<const float> points, int thickness = 2) {
 	if (points.size() != NUM_KEYPOINTS * 2) {
 		throw std::invalid_argument("points.size() != 133 * 2");
 	}
@@ -450,29 +541,32 @@ void draw_whole_body_skeleton_col_based(cv::Mat mat, std::span<const float> poin
 				   &mat, thickness](Bone bone) {
 		const auto start_index = bone.base_0_start();
 		const auto end_index   = bone.base_0_end();
-		const auto start       = cv::Point(static_cast<int>(xs[start_index]), static_cast<int>(ys[start_index]));
-		const auto end         = cv::Point(static_cast<int>(xs[end_index]), static_cast<int>(ys[end_index]));
-		cv::line(mat, start, end, cv::Scalar(bone.color[0], bone.color[1], bone.color[2]), thickness);
+		const auto start_x     = static_cast<int>(xs[start_index]);
+		const auto start_y     = static_cast<int>(ys[start_index]);
+		const auto end_x       = static_cast<int>(xs[end_index]);
+		const auto end_y       = static_cast<int>(ys[end_index]);
+		drawLine(mat, start_x, start_y, end_x, end_y, bone.color, thickness);
 	});
 }
 }
 
 extern "C" {
 void aux_img_draw_whole_body_skeleton_impl(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options) {
-	cv::Mat cv_mat = aux_img::fromSharedMat(mat);
-	auto points    = std::span(data, aux_img::NUM_KEYPOINTS * 2);
+	auto points = std::span(data, aux_img::NUM_KEYPOINTS * 2);
+
 	if (options.is_draw_bones) {
 		if (options.layout == aux_img::Layout::RowMajor) {
-			aux_img::draw_whole_body_skeleton_row_based(cv_mat, points, options.bone_thickness);
+			aux_img::draw_whole_body_skeleton_row_based(mat, points, options.bone_thickness);
 		} else {
-			aux_img::draw_whole_body_skeleton_col_based(cv_mat, points, options.bone_thickness);
+			aux_img::draw_whole_body_skeleton_col_based(mat, points, options.bone_thickness);
 		}
 	}
+
 	if (options.is_draw_landmarks) {
 		if (options.layout == aux_img::Layout::RowMajor) {
-			aux_img::draw_whole_body_landmark_row_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
+			aux_img::draw_whole_body_landmark_row_based(mat, points, options.landmark_radius, options.landmark_thickness);
 		} else {
-			aux_img::draw_whole_body_landmark_col_based(cv_mat, points, options.landmark_radius, options.landmark_thickness);
+			aux_img::draw_whole_body_landmark_col_based(mat, points, options.landmark_radius, options.landmark_thickness);
 		}
 	}
 };

@@ -1,6 +1,5 @@
 #ifndef AUX_C_H
 #define AUX_C_H
-#include "aux.hpp"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -56,12 +55,19 @@ struct aux_img_vec3i {
 };
 typedef struct aux_img_vec3i aux_img_vec3i_t;
 
-void aux_img_put_text_impl(struct aux_img_shared_mat mat,
+struct aux_img_vec3d {
+	double x;
+	double y;
+	double z;
+};
+typedef struct aux_img_vec3d aux_img_vec3d_t;
+
+void aux_img_put_text_impl(aux_img_shared_mat_t mat,
 						   const char *text,
-						   struct aux_img_vec2i pos,
-						   struct aux_img_vec3i color,
-						   float scale,
-						   float thickness,
+						   aux_img_vec2i_t pos,
+						   aux_img_vec3d_t color,
+						   double scale,
+						   int thickness,
 						   bool bottomLeftOrigin);
 #ifdef __cplusplus
 }

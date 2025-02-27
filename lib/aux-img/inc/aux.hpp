@@ -1,9 +1,19 @@
 #pragma once
 
 #include <cstdint>
-#include <opencv2/core.hpp>
 
 namespace aux_img {
+namespace constants {
+	constexpr auto IM_8U  = 0;
+	constexpr auto IM_8S  = 1;
+	constexpr auto IM_16U = 2;
+	constexpr auto IM_16S = 3;
+	constexpr auto IM_32S = 4;
+	constexpr auto IM_32F = 5;
+	constexpr auto IM_64F = 6;
+	constexpr auto IM_16F = 7;
+}
+
 /// @note use with `pixel_format` field in `frame_info_t`
 enum class PixelFormat : uint8_t {
 	/// usually 24bit RGB (8bit per channel, depth=U8)
@@ -19,14 +29,14 @@ enum class PixelFormat : uint8_t {
 
 /// @note use with `depth` field in `frame_info_t`
 enum class Depth : uint8_t {
-	U8  = CV_8U,
-	S8  = CV_8S,
-	U16 = CV_16U,
-	S16 = CV_16S,
-	S32 = CV_32S,
-	F32 = CV_32F,
-	F64 = CV_64F,
-	F16 = CV_16F,
+	U8  = constants::IM_8U,
+	S8  = constants::IM_8S,
+	U16 = constants::IM_16U,
+	S16 = constants::IM_16S,
+	S32 = constants::IM_32S,
+	F32 = constants::IM_32F,
+	F64 = constants::IM_64F,
+	F16 = constants::IM_16F,
 };
 
 // assuming step = cols * channels
@@ -76,7 +86,7 @@ int opencv_format_from_pixel_format(PixelFormat pixel_format, Depth depth);
 // copied. This operation is very efficient and can be used to process external
 // data using OpenCV functions. The external data is not automatically
 // deallocated, so you should take care of it.
-cv::Mat fromSharedMat(SharedMat sharedMat);
+// cv::Mat fromSharedMat(SharedMat sharedMat);
 
 enum class Layout : uint8_t {
 	RowMajor = 0,
