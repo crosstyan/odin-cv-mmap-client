@@ -3,7 +3,7 @@
 #include <functional>
 #include <span>
 #include <aux.hpp>
-#include <CImg.h>
+#include <format>
 #include <stdexcept>
 
 #ifndef M_COLOR_SPINE
@@ -397,74 +397,21 @@ void for_each_with_pair(std::span<const float> points, std::function<void(std::t
 	}
 }
 
-// Get the number of channels from pixel format
-int channels_from_pixel_format(PixelFormat pixel_format);
-
-// Template function to create a CImg view of SharedMat data with appropriate type
-template <typename T>
-cimg_library::CImg<T> createCImgViewTyped(SharedMat &mat);
-
-// Helper function to create a CImg view of SharedMat data
-cimg_library::CImg<uint8_t> createCImgView(SharedMat &mat);
-
-// Helper function to prepare color array based on pixel format
-uint8_t *prepareColorArray(const int color[3], PixelFormat pixel_format, int channels) {
-	uint8_t *col = new uint8_t[channels];
-
-	// Fill color array based on pixel format
-	switch (pixel_format) {
-	case PixelFormat::RGB:
-		col[0] = static_cast<uint8_t>(color[0]); // R
-		col[1] = static_cast<uint8_t>(color[1]); // G
-		col[2] = static_cast<uint8_t>(color[2]); // B
-		break;
-
-	case PixelFormat::BGR:
-		col[0] = static_cast<uint8_t>(color[2]); // B
-		col[1] = static_cast<uint8_t>(color[1]); // G
-		col[2] = static_cast<uint8_t>(color[0]); // R
-		break;
-
-	case PixelFormat::RGBA:
-		col[0] = static_cast<uint8_t>(color[0]); // R
-		col[1] = static_cast<uint8_t>(color[1]); // G
-		col[2] = static_cast<uint8_t>(color[2]); // B
-		col[3] = 255;                            // A (fully opaque)
-		break;
-
-	case PixelFormat::BGRA:
-		col[0] = static_cast<uint8_t>(color[2]); // B
-		col[1] = static_cast<uint8_t>(color[1]); // G
-		col[2] = static_cast<uint8_t>(color[0]); // R
-		col[3] = 255;                            // A (fully opaque)
-		break;
-
-	case PixelFormat::GRAY:
-		// Convert RGB to grayscale using standard formula
-		col[0] = static_cast<uint8_t>(0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]);
-		break;
-
-	default:
-		// For other formats, just use the first channel
-		col[0] = static_cast<uint8_t>(color[0]);
-		for (int i = 1; i < channels; i++) {
-			col[i] = static_cast<uint8_t>(i < 3 ? (i == 1 ? color[1] : color[2]) : 255);
-		}
-	}
-
-	return col;
-}
-
 // Helper function to draw a circle directly on the SharedMat data
 void drawCircle(SharedMat &mat, int x, int y, int radius, const int color[3], int thickness) {
-	// Create a CImg view of the existing data without copying
-	auto img = createCImgView(mat);
+	// For simplicity, we'll only support U8 depth
+	if (mat.depth != Depth::U8) {
+		throw std::runtime_error(
+			std::format("Unsupported depth {} for CImg. Only U8 is currently supported.",
+						depth_to_string(mat.depth)));
+	}
 
-	// For simplicity, use color as-is assuming RGB order
-	const unsigned char col[3] = {
-		static_cast<unsigned char>(color[0]),
-		static_cast<unsigned char>(color[1]),
-		static_cast<unsigned char>(color[2])};
+	auto img = aux_img::createCImgViewU8(mat);
+
+	const uint8_t col[3] = {
+		static_cast<uint8_t>(color[0]),
+		static_cast<uint8_t>(color[1]),
+		static_cast<uint8_t>(color[2])};
 
 	if (thickness < 0) {
 		// Filled circle
@@ -473,20 +420,29 @@ void drawCircle(SharedMat &mat, int x, int y, int radius, const int color[3], in
 		// Outlined circle
 		img.draw_circle(x, y, radius, col, 1.0f, thickness);
 	}
+
+	prepareForInterleaved(img);
 }
 
 // Helper function to draw a line directly on the SharedMat data
 void drawLine(SharedMat &mat, int x1, int y1, int x2, int y2, const int color[3], int thickness) {
-	// Create a CImg view of the existing data without copying
-	auto img = createCImgView(mat);
+	// For simplicity, we'll only support U8 depth
+	if (mat.depth != Depth::U8) {
+		throw std::runtime_error(
+			std::format("Unsupported depth {} for CImg. Only U8 is currently supported.",
+						depth_to_string(mat.depth)));
+	}
 
-	// For simplicity, use color as-is assuming RGB order
-	const unsigned char col[3] = {
-		static_cast<unsigned char>(color[0]),
-		static_cast<unsigned char>(color[1]),
-		static_cast<unsigned char>(color[2])};
+	auto img = aux_img::createCImgViewU8(mat);
+
+	const uint8_t col[3] = {
+		static_cast<uint8_t>(color[0]),
+		static_cast<uint8_t>(color[1]),
+		static_cast<uint8_t>(color[2])};
 
 	img.draw_line(x1, y1, x2, y2, col, thickness);
+
+	prepareForInterleaved(img);
 }
 
 // row based, with shape of (133, 2)
@@ -554,20 +510,20 @@ extern "C" {
 void aux_img_draw_whole_body_skeleton_impl(aux_img::SharedMat mat, const float *data, aux_img::DrawSkeletonOptions options) {
 	auto points = std::span(data, aux_img::NUM_KEYPOINTS * 2);
 
-	if (options.is_draw_bones) {
-		if (options.layout == aux_img::Layout::RowMajor) {
-			aux_img::draw_whole_body_skeleton_row_based(mat, points, options.bone_thickness);
-		} else {
-			aux_img::draw_whole_body_skeleton_col_based(mat, points, options.bone_thickness);
-		}
-	}
+	// if (options.is_draw_bones) {
+	// 	if (options.layout == aux_img::Layout::RowMajor) {
+	// 		aux_img::draw_whole_body_skeleton_row_based(mat, points, options.bone_thickness);
+	// 	} else {
+	// 		aux_img::draw_whole_body_skeleton_col_based(mat, points, options.bone_thickness);
+	// 	}
+	// }
 
-	if (options.is_draw_landmarks) {
-		if (options.layout == aux_img::Layout::RowMajor) {
-			aux_img::draw_whole_body_landmark_row_based(mat, points, options.landmark_radius, options.landmark_thickness);
-		} else {
-			aux_img::draw_whole_body_landmark_col_based(mat, points, options.landmark_radius, options.landmark_thickness);
-		}
-	}
+	// if (options.is_draw_landmarks) {
+	// 	if (options.layout == aux_img::Layout::RowMajor) {
+	// 		aux_img::draw_whole_body_landmark_row_based(mat, points, options.landmark_radius, options.landmark_thickness);
+	// 	} else {
+	// 		aux_img::draw_whole_body_landmark_col_based(mat, points, options.landmark_radius, options.landmark_thickness);
+	// 	}
+	// }
 };
 }

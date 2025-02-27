@@ -2,7 +2,6 @@
 #include <format>
 #include <stdexcept>
 #include <aux.hpp>
-#include <CImg.h>
 
 namespace aux_img {
 const char *depth_to_string(const Depth depth) {
@@ -75,8 +74,8 @@ int channels_from_pixel_format(PixelFormat pixel_format) {
 }
 
 // Helper function to create a CImg view of SharedMat data
-cimg_library::CImg<uint8_t> createCImgView(SharedMat &mat) {
-	// For simplicity, we'll only support U8 depth and RGB/BGR formats directly
+cimg_library::CImg<uint8_t> createCImgViewU8(SharedMat &mat) {
+	// For simplicity, we'll only support U8 depth
 	if (mat.depth != Depth::U8) {
 		throw std::runtime_error(
 			std::format("Unsupported depth {} for CImg. Only U8 is currently supported.",
@@ -84,16 +83,27 @@ cimg_library::CImg<uint8_t> createCImgView(SharedMat &mat) {
 	}
 
 	int channels = channels_from_pixel_format(mat.pixel_format);
-	return cimg_library::CImg<uint8_t>(mat.data, mat.cols, mat.rows, 1, channels, true);
+
+	// https://www.codefull.net/2014/11/cimg-does-not-store-pixels-in-the-interleaved-format/
+	// Create CImg from interleaved data with shared memory
+	// The key is to specify the parameters in the right order:
+	// (data, channels, width, height, depth, is_shared)
+	// This is how CImg expects interleaved RGB/BGR data
+	auto img = cimg_library::CImg<uint8_t>(mat.data, channels, mat.cols, mat.rows, 1, true);
+
+	img.permute_axes("yzcx");
+	return img;
 }
 
-// Helper function to draw text using CImg
-void drawText(SharedMat &mat, const char *text, Vec2i pos, Vec3d color, double scale, int thickness, bool bottomLeftOrigin) {
-	auto img = createCImgView(mat);
+void prepareForInterleaved(cimg_library::CImg<uint8_t> &img) {
+	img.permute_axes("cxyz");
+}
 
-	// For simplicity, we'll use the color as-is, assuming RGB order
-	// For BGR format, the user would need to swap the color channels
-	const uint8_t col[3] = {
+void drawText(SharedMat &mat, const char *text, Vec2i pos, Vec3d color, double scale, int thickness, bool bottomLeftOrigin) {
+	auto img = createCImgViewU8(mat);
+
+	// Use color directly as passed in
+	uint8_t col[3] = {
 		static_cast<uint8_t>(color.x),
 		static_cast<uint8_t>(color.y),
 		static_cast<uint8_t>(color.z)};
@@ -104,18 +114,22 @@ void drawText(SharedMat &mat, const char *text, Vec2i pos, Vec3d color, double s
 		y_pos = mat.rows - pos.y;
 	}
 
-	// Scale factor for font size (CImg uses a different scale than OpenCV)
-	float font_size = static_cast<float>(scale * 13.0); // Approximate conversion
+	//  Approximate conversion: Scale factor for font size
+	float font_size = static_cast<float>(scale * 13.0);
 
 	img.draw_text(pos.x, y_pos, text, col, 0, 1, font_size);
+
+	// Convert back to interleaved format
+	prepareForInterleaved(img);
+
+	// No need to copy data back since we're using shared memory
 }
 
-// Helper function to draw rectangle using CImg
 void drawRectangle(SharedMat &mat, Vec2i start, Vec2i end, Vec3d color, int thickness) {
-	auto img = createCImgView(mat);
+	auto img = createCImgViewU8(mat);
 
-	// For simplicity, we'll use the color as-is, assuming RGB order
-	const uint8_t col[3] = {
+	// Use color directly as passed in
+	uint8_t col[3] = {
 		static_cast<uint8_t>(color.x),
 		static_cast<uint8_t>(color.y),
 		static_cast<uint8_t>(color.z)};
@@ -134,6 +148,8 @@ void drawRectangle(SharedMat &mat, Vec2i start, Vec2i end, Vec3d color, int thic
 			}
 		}
 	}
+
+	prepareForInterleaved(img);
 }
 }
 

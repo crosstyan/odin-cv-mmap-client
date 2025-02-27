@@ -3,8 +3,6 @@ import "core:c"
 import "core:strings"
 
 foreign import stdcpp "system:c++"
-foreign import opencv_core "system:opencv_core"
-foreign import opencv_imgproc "system:opencv_imgproc"
 
 // only consider Linux for now
 foreign import auximg "libauximg.so"

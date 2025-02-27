@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <CImg.h>
 
 namespace aux_img {
 namespace constants {
@@ -76,7 +77,10 @@ const char *cv_depth_to_string(const int depth);
 
 const char *pixel_format_to_string(const PixelFormat fmt);
 
-int opencv_format_from_pixel_format(PixelFormat pixel_format, Depth depth);
+int channels_from_pixel_format(PixelFormat pixel_format);
+
+cimg_library::CImg<uint8_t> createCImgViewU8(SharedMat &mat);
+void prepareForInterleaved(cimg_library::CImg<uint8_t> &img);
 
 // @sa: https://docs.opencv.org/4.x/d3/d63/classcv_1_1Mat.html#a5fafc033e089143062fd31015b5d0f40
 //
