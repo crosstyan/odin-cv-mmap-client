@@ -4,3 +4,6 @@
 [submodule "odin-zeromq"]
 	path = lib/odin-zeromq
 	url = https://github.com/crosstyan/odin-zeromq
+[submodule "lib/aux-img/third-party/CImg"]
+	path = lib/aux-img/third-party/CImg
+	url = https://github.com/GreycLab/CImg

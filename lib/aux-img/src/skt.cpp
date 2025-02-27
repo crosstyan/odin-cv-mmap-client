@@ -1,12 +1,11 @@
 #include <cstdint>
 #include <cassert>
 #include <functional>
-#include <format>
-#include <print>
 #include <span>
 #include <aux.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <CImg.h>
 
 #ifndef M_COLOR_SPINE
 #define M_COLOR_SPINE 138, 201, 38

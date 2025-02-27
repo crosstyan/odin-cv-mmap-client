@@ -4,13 +4,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-#     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-# endif()
+add_library(CImg INTERFACE)
+target_include_directories(CImg INTERFACE third-party/CImg)
 
 find_package(OpenCV REQUIRED)
 add_library(auximg SHARED src/aux.cpp src/skt.cpp)
-target_link_libraries(auximg PUBLIC ${OpenCV_LIBS})
+target_link_libraries(auximg PUBLIC ${OpenCV_LIBS} CImg)
 target_include_directories(auximg PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_include_directories(auximg PUBLIC inc)
 
