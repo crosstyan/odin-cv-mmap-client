@@ -35,8 +35,9 @@
 namespace aux_img {
 constexpr auto NUM_KEYPOINTS = 133;
 struct Landmark {
+	using color_t = uint8_t[3];
 	uint8_t index;
-	int color[3];
+	color_t color;
 
 	uint8_t base_0_index() const {
 		assert(index > 0);
