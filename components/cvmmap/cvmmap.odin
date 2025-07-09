@@ -63,7 +63,7 @@ SyncMessage :: struct #packed {
 	label:       [NAME_MAX_LEN]u8,
 }
 
-OnFrame_Proc :: proc(info: FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr)
+OnFrame_Proc :: proc(metadata: FrameMetadata, buffer: []u8, user_data: rawptr)
 
 SharedBuffer :: struct {
 	// mmaped shared memory with size
@@ -282,10 +282,9 @@ _polling_task :: proc(t: ^Thread) {
 		}
 		client._shared_buffer = image_buffer
 		if (client.on_frame != nil) {
-			metadata := _metadata(&image_buffer)
+			meta_ptr := _metadata(&image_buffer)
 			client.on_frame(
-				metadata.info,
-				metadata.frame_index,
+				meta_ptr^,
 				image_buffer.image,
 				client.user_data,
 			)
@@ -313,10 +312,9 @@ _polling_task :: proc(t: ^Thread) {
 		}
 		if (client.on_frame != nil) {
 			assert(client._shared_buffer != nil, "`nil` image buffer")
-			metadata := _metadata(&client._shared_buffer.?)
+			meta_ptr := _metadata(&client._shared_buffer.?)
 			client.on_frame(
-				metadata.info,
-				metadata.frame_index,
+				meta_ptr^,
 				client._shared_buffer.?.image,
 				client.user_data,
 			)

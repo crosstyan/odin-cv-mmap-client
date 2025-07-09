@@ -202,7 +202,9 @@ gui_main :: proc(instance_name: string) {
 	}
 
 	client.on_frame =
-	proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
+	proc(metadata: cvmmap.FrameMetadata, buffer: []u8, user_data: rawptr) {
+		info := metadata.info
+		frame_index := metadata.frame_index
 		ctx_opt := cast(^VideoRenderContext)user_data
 		pose_info := ctx_opt.pose_info
 		assert(ctx_opt != nil, "invalid user_data")
@@ -407,8 +409,8 @@ cli_main :: proc(instance_name: string) {
 		cvmmap.destroy(client)
 		log.info("destroyed")
 	}
-	on_frame := proc(info: cvmmap.FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr) {
-		log.infof("[{}] FrameInfo={}; Len={}", frame_index, info, len(buffer))
+	on_frame := proc(metadata: cvmmap.FrameMetadata, buffer: []u8, user_data: rawptr) {
+		log.infof("[{}] FrameInfo={}; Len={}", metadata.frame_index, metadata.info, len(buffer))
 	}
 	client.on_frame = on_frame
 	err := cvmmap.init(client)
