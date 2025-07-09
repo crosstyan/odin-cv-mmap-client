@@ -31,8 +31,6 @@ GL_MAJOR_VERSION :: 3
 GL_MINOR_VERSION :: 3
 GLSL_VERSION :: "#version 330"
 
-SHM_NAME :: "/tmp_vid"
-CV_MMAP_ZEROMQ_ADDR :: "ipc:///tmp/tmp_vid"
 BIN_ZEROMQ_ADDR :: "ipc:///tmp/tmp_bin"
 
 // check and unset the flag, return the original flag value
@@ -42,7 +40,7 @@ check_and_unset :: proc(flag: ^bool) -> bool {
 	return r
 }
 
-gui_main :: proc() {
+gui_main :: proc(instance_name: string) {
 	context.logger = log.create_console_logger(log.Level.Debug)
 	assert(cast(bool)glfw.Init(), "failed to initialize GLFW")
 	defer glfw.Terminate()
@@ -57,7 +55,7 @@ gui_main :: proc() {
 	//  you provide. So there's a second API that works with `zmq_msg_t`
 	//  structures, with a richer but more difficult API
 
-	client := cvmmap.create(SHM_NAME, CV_MMAP_ZEROMQ_ADDR, zmq_ctx)
+	client := cvmmap.create(instance_name, zmq_ctx)
 	log.info("created")
 	defer {
 		cvmmap.destroy(client)
@@ -387,7 +385,7 @@ gui_main :: proc() {
 	}
 }
 
-cli_main :: proc() {
+cli_main :: proc(instance_name: string) {
 	lk := sync.Mutex{}
 	@(static) cv := sync.Cond{}
 	context.logger = log.create_console_logger(log.Level.Debug)
@@ -403,7 +401,7 @@ cli_main :: proc() {
 	})
 	log.info("signal handler set")
 
-	client := cvmmap.create(SHM_NAME, CV_MMAP_ZEROMQ_ADDR)
+	client := cvmmap.create(instance_name)
 	log.info("created")
 	defer {
 		cvmmap.destroy(client)
@@ -433,15 +431,16 @@ cli_main :: proc() {
 // https://pkg.odin-lang.org/core/flags/
 main :: proc() {
 	Options :: struct {
-		cli: bool `usage:"run in cli mode"`,
+		cli:           bool `usage:"run in cli mode"`,
+		instance_name: string `usage:"instance name"`,
 	}
 	parse_style: flags.Parsing_Style = .Odin
 	opts := Options{}
 	flags.parse_or_exit(&opts, os.args, parse_style)
 	// https://github.com/odin-lang/Odin/blob/16eca1ded12373cd5a106d20796458a374940771/examples/demo/demo.odin#L1397
 	if opts.cli {
-		cli_main()
+		cli_main(opts.instance_name)
 	} else {
-		gui_main()
+		gui_main(opts.instance_name)
 	}
 }

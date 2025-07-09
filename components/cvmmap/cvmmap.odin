@@ -1,10 +1,11 @@
 package cvmmap
 import zmq "../../lib/odin-zeromq"
 import "base:runtime"
+import "core:c"
+import "core:fmt"
 import "core:log"
 import "core:os"
 import "core:strings"
-import "core:sys/linux"
 import "core:sys/posix"
 import "core:thread"
 
@@ -14,6 +15,11 @@ Thread :: thread.Thread
 FRAME_TOPIC_MAGIC :: 0x7d
 // I think it's -1
 BAD_MMAP_ADDR :: cast(rawptr)cast(uintptr)0xFFFFFFFFFFFFFFFF
+NAME_MAX_LEN :: 24
+SHM_PAYLOAD_OFFSET :: 256
+// CV-MMAP\0
+CV_MMAP_MAGIC_LEN :: 8
+CV_MMAP_MAGIC_STR :: "CV-MMAP"
 
 // same as OpenCV's definitions
 Depth :: enum u8 {
@@ -46,23 +52,37 @@ FrameInfo :: struct #packed {
 	pixel_format: PixelFormat,
 }
 
-SyncMessage :: struct #packed {
-	magic:       u8,
+FrameMetadata :: struct #packed {
 	frame_index: u32,
 	info:        FrameInfo,
 }
 
+SyncMessage :: struct #packed {
+	magic:       u8,
+	frame_index: u32,
+	label:       [NAME_MAX_LEN]u8,
+}
+
 OnFrame_Proc :: proc(info: FrameInfo, frame_index: u32, buffer: []u8, user_data: rawptr)
 
+SharedBuffer :: struct {
+	// mmaped shared memory with size
+	_shm:     []u8,
+	// image buffer
+	image:    []u8,
+	// metadata region
+	metadata: []u8,
+}
+
 CvMmapClient :: struct {
+	_instance_name:    string,
 	_shm_name:         string,
 	_zmq_addr:         string,
 	_zmq_ctx:          ^zmq.Context,
 	_is_owned_zmq_ctx: bool,
 	_zmq_sock:         ^zmq.Socket,
-	_shm_size:         Maybe(uint),
 	_shm_fd:           Maybe(posix.FD),
-	_shm_ptr:          Maybe([^]u8),
+	_shared_buffer:     Maybe(SharedBuffer),
 	_has_init:         bool,
 	// task
 	_polling_task:     Maybe(^Thread),
@@ -97,19 +117,19 @@ StateError :: enum {
 //
 // a proper life cycle the client:
 // create -> init -> setting callbacks -> start -> stop -> destroy
-create :: proc(shm_name: string, zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^CvMmapClient {
+create :: proc(instance_name: string, zmq_ctx: ^zmq.Context = nil) -> ^CvMmapClient {
 	ctx := zmq_ctx if zmq_ctx != nil else zmq.ctx_new()
 	is_owned_zmq_ctx := zmq_ctx == nil
 
 	client := new(CvMmapClient)
-	client._shm_name = shm_name
-	client._zmq_addr = zmq_addr
+	client._instance_name = strings.clone(instance_name)
+	client._shm_name = fmt.aprintf("cvmmap_%s", instance_name)
+	client._zmq_addr = fmt.aprintf("ipc:///tmp/cvmmap_%s", client._instance_name)
 	client._zmq_ctx = ctx
 	client._is_owned_zmq_ctx = is_owned_zmq_ctx
 	client._zmq_sock = zmq.socket(ctx, zmq.SUB)
-	client._shm_size = nil
 	client._shm_fd = nil
-	client._shm_ptr = nil
+	client._shared_buffer = nil
 	client._has_init = false
 
 	client._polling_task = nil
@@ -122,13 +142,13 @@ create :: proc(shm_name: string, zmq_addr: string, zmq_ctx: ^zmq.Context = nil) 
 
 destroy :: proc(self: ^CvMmapClient) {
 	stop(self)
-	if self._shm_fd != nil {
-		posix.close(self._shm_fd.?)
-	}
 	zmq.close(self._zmq_sock)
 	if self._is_owned_zmq_ctx {
 		zmq.ctx_term(self._zmq_ctx)
 	}
+	delete(self._instance_name)
+	delete(self._shm_name)
+	delete(self._zmq_addr)
 	free(self)
 }
 
@@ -152,43 +172,71 @@ init :: proc(self: ^CvMmapClient) -> (err: CvMmapError) {
 		return ZmqError{code, "connect"}
 	}
 
-	is_disconnect_zmq := false
-	defer if is_disconnect_zmq {
+	has_err := false
+	defer if has_err {
 		zmq.disconnect(self._zmq_sock, zmq_addr_c)
 	}
 
 	topic := [1]u8{FRAME_TOPIC_MAGIC}
 	code = cast(int)zmq.setsockopt_bytes(self._zmq_sock, zmq.SUBSCRIBE, topic[:])
 	if code != 0 {
-		is_disconnect_zmq = true
+		has_err = true
 		return ZmqError{code, "setsockopt_bytes"}
 	}
 
 	shm_name_c := strings.clone_to_cstring(self._shm_name)
 	defer delete(shm_name_c)
-	fd := posix.shm_open(shm_name_c, {}, {.IRUSR, .IWUSR, .IRGRP, .IWGRP, .IROTH, .IWOTH})
+	// READONLY
+	// MODE is meaningless for consumer, only meaningful when `O_CREAT` is set
+	fd := posix.shm_open(shm_name_c, {}, {})
 	if fd == -1 {
-		is_disconnect_zmq = true
+		has_err = true
 		return ShmError{cast(int)posix.get_errno(), "shm_open"}
 	}
+	log.infof("shm_name: %s; shm_fd: %d", self._shm_name, fd)
 
 	self._shm_fd = fd
 	self._has_init = true
 	return nil
 }
 
+// @note: this is an alias (non allocating)
+// @see https://odin-lang.org/docs/overview/
 @(private)
-_frame_buffer :: proc(self: ^CvMmapClient) -> ([]u8, bool) {
-	ptr, ok := self._shm_ptr.?
-	if !ok {
-		return nil, false
+_get_sync_msg_get_label :: proc(msg: ^SyncMessage) -> string {
+	return string(cstring(raw_data(msg.label[:])))
+}
+
+@(private)
+_get_shared_buffer :: proc(fd: posix.FD) -> (SharedBuffer, CvMmapError) {
+	image_buffer: SharedBuffer
+	stat: posix.stat_t
+	ok := posix.fstat(fd, &stat)
+	if ok != .OK {
+		return image_buffer, ShmError{cast(int)posix.get_errno(), "fstat"}
 	}
-	size: uint
-	size, ok = self._shm_size.?
-	if !ok {
-		return nil, false
+	shm_ptr := posix.mmap(nil, cast(c.size_t)stat.st_size, {.READ}, {.SHARED}, fd, 0)
+	if shm_ptr == nil || shm_ptr == BAD_MMAP_ADDR {
+		return image_buffer, ShmError{cast(int)posix.get_errno(), "mmap"}
 	}
-	return ptr[:size], true
+	image_buffer._shm = (cast([^]u8)shm_ptr)[:stat.st_size]
+	image_buffer.image = image_buffer._shm[SHM_PAYLOAD_OFFSET:]
+	image_buffer.metadata = image_buffer._shm[:SHM_PAYLOAD_OFFSET]
+	cv_mmap_magic := string(cstring(raw_data(image_buffer.metadata[:CV_MMAP_MAGIC_LEN])))
+	assert(
+		cv_mmap_magic == CV_MMAP_MAGIC_STR,
+		fmt.tprintf(
+			"invalid cv-mmap magic; expected=%s; actual=%s",
+			CV_MMAP_MAGIC_STR,
+			cv_mmap_magic,
+		),
+	)
+	return image_buffer, nil
+}
+
+@(private)
+_metadata :: proc(image_buffer_state: ^SharedBuffer) -> ^FrameMetadata {
+	return cast(^FrameMetadata)(raw_data(image_buffer_state.metadata[CV_MMAP_MAGIC_LEN:]))
 }
 
 @(private)
@@ -215,10 +263,9 @@ _polling_task :: proc(t: ^Thread) {
 		return sync_msg, true
 	}
 
-	at_first_frame :: proc(client: ^CvMmapClient) -> bool {
-		// https://github.com/odin-lang/Odin/issues/29
+	on_initial_frame :: proc(client: ^CvMmapClient) -> bool {
 		ok: bool = ---
-		assert(client._shm_fd != nil, "shm_fd is nil")
+		assert(client._shm_fd != nil, "`nil` shm_fd")
 		sync_msg: SyncMessage
 		sync_msg, ok = recv_sync_msg(client._zmq_sock)
 		if !ok {
@@ -226,25 +273,29 @@ _polling_task :: proc(t: ^Thread) {
 		}
 		fd: FD
 		fd, ok = client._shm_fd.?
-		assert(ok, "shm_fd is nil")
-		client._shm_size = cast(uint)sync_msg.info.buffer_size
-		shm_ptr := posix.mmap(nil, client._shm_size.?, {.READ}, {.SHARED}, fd, 0)
-		if shm_ptr == nil || shm_ptr == BAD_MMAP_ADDR {
-			log.errorf("mmap failed; errno={}; ptr={}", posix.get_errno(), shm_ptr)
+		assert(ok, "`nil` shm_fd")
+
+		image_buffer, err := _get_shared_buffer(fd)
+		if err != nil {
+			log.errorf("failed to get image buffer; err={}", err)
 			return false
 		}
-		client._shm_ptr = cast([^]u8)shm_ptr
-		slice: []u8
-		slice, ok = _frame_buffer(client)
-		if (client.on_frame != nil) && ok {
-			client.on_frame(sync_msg.info, sync_msg.frame_index, slice, client.user_data)
+		client._shared_buffer = image_buffer
+		if (client.on_frame != nil) {
+			metadata := _metadata(&image_buffer)
+			client.on_frame(
+				metadata.info,
+				metadata.frame_index,
+				image_buffer.image,
+				client.user_data,
+			)
 		}
 		return true
 	}
 
 	for client._is_running {
-		if client._shm_ptr == nil {
-			ok := at_first_frame(client)
+		if client._shared_buffer == nil {
+			ok := on_initial_frame(client)
 			if !ok {
 				continue
 			}
@@ -255,18 +306,20 @@ _polling_task :: proc(t: ^Thread) {
 		if !ok {
 			continue
 		}
-		if (client._shm_size.?) != cast(uint)sync_msg.info.buffer_size {
-			log.errorf(
-				"buffer size mismatch; expected={}; actual={}",
-				client._shm_size.?,
-				sync_msg.info.buffer_size,
-			)
+		label := _get_sync_msg_get_label(&sync_msg)
+		if label != client._instance_name {
+			log.errorf("invalid label={}; expected={}", label, client._instance_name)
 			continue
 		}
-		slice: []u8
-		slice, ok = _frame_buffer(client)
-		if (client.on_frame != nil) && ok {
-			client.on_frame(sync_msg.info, sync_msg.frame_index, slice, client.user_data)
+		if (client.on_frame != nil) {
+			assert(client._shared_buffer != nil, "`nil` image buffer")
+			metadata := _metadata(&client._shared_buffer.?)
+			client.on_frame(
+				metadata.info,
+				metadata.frame_index,
+				client._shared_buffer.?.image,
+				client.user_data,
+			)
 		}
 	}
 }
@@ -300,11 +353,11 @@ stop :: proc(self: ^CvMmapClient) {
 		thread.join(task)
 		thread.destroy(task)
 	}
-	if self._shm_ptr != nil {
-		linux.munmap(self._shm_ptr.?, self._shm_size.?)
-		self._shm_ptr = nil
+	if self._shared_buffer != nil {
+		res := posix.munmap(raw_data(self._shared_buffer.?._shm), len(self._shared_buffer.?._shm))
+		assert(res != .FAIL, "munmap failed")
+		self._shared_buffer = nil
 	}
-	self._shm_size = nil
 	if self._shm_fd != nil {
 		posix.close(self._shm_fd.?)
 		self._shm_fd = nil
