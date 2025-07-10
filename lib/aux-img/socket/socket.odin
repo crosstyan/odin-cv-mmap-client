@@ -45,7 +45,9 @@ create :: proc(zmq_addr: string, zmq_ctx: ^zmq.Context = nil) -> ^AuxImgClient {
 
 destroy :: proc(self: ^AuxImgClient) {
 	stop(self)
-	zmq.close(self._zmq_sock)
+	if self._zmq_sock != nil {
+		zmq.close(self._zmq_sock)
+	}
 	if self._is_owned_zmq_ctx {
 		zmq.ctx_term(self._zmq_ctx)
 	}
@@ -77,6 +79,11 @@ init :: proc(self: ^AuxImgClient) -> AuxImgError {
 	code := cast(int)zmq.setsockopt_bool(self._zmq_sock, zmq.CONFLATE, true)
 	if code != 0 {
 		return ZmqError{code, "setsockopt_bool"}
+	}
+	// Let recv() time out so the thread can exit when _is_running becomes false
+	code = cast(int)zmq.setsockopt_int(self._zmq_sock, zmq.RCVTIMEO, 100) // 100 ms
+	if code != 0 {
+		return ZmqError{code, "setsockopt_int(RCVTIMEO)"}
 	}
 
 	// Connect to the ZMQ socket
@@ -164,5 +171,10 @@ stop :: proc(self: ^AuxImgClient) {
 		thread.join(task)
 		thread.destroy(task)
 		self._polling_task = nil
+	}
+	// now it is safe to close the socket
+	if self._zmq_sock != nil {
+		zmq.close(self._zmq_sock)
+		self._zmq_sock = nil
 	}
 }

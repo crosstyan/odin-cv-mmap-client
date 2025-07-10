@@ -201,8 +201,7 @@ gui_main :: proc(instance_name: string) {
 		return tid
 	}
 
-	client.on_frame =
-	proc(metadata: cvmmap.FrameMetadata, buffer: []u8, user_data: rawptr) {
+	client.on_frame = proc(metadata: cvmmap.FrameMetadata, buffer: []u8, user_data: rawptr) {
 		info := metadata.info
 		frame_index := metadata.frame_index
 		ctx_opt := cast(^VideoRenderContext)user_data

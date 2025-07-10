@@ -142,7 +142,9 @@ create :: proc(instance_name: string, zmq_ctx: ^zmq.Context = nil) -> ^CvMmapCli
 
 destroy :: proc(self: ^CvMmapClient) {
 	stop(self)
-	zmq.close(self._zmq_sock)
+	if self._zmq_sock != nil {
+		zmq.close(self._zmq_sock)
+	}
 	if self._is_owned_zmq_ctx {
 		zmq.ctx_term(self._zmq_ctx)
 	}
@@ -164,6 +166,11 @@ init :: proc(self: ^CvMmapClient) -> (err: CvMmapError) {
 	code := cast(int)zmq.setsockopt_bool(self._zmq_sock, zmq.CONFLATE, true)
 	if code != 0 {
 		return ZmqError{code, "setsockopt_bool"}
+	}
+	// ensure recv() wakes up periodically so we can exit cleanly
+	code = cast(int)zmq.setsockopt_int(self._zmq_sock, zmq.RCVTIMEO, 100) // 100 ms
+	if code != 0 {
+		return ZmqError{code, "setsockopt_int(RCVTIMEO)"}
 	}
 
 	// http://api.zeromq.org/4-2:zmq-connect
@@ -349,6 +356,11 @@ stop :: proc(self: ^CvMmapClient) {
 	if task, ok := self._polling_task.?; ok {
 		thread.join(task)
 		thread.destroy(task)
+	}
+	// close the socket now that the polling thread is gone
+	if self._zmq_sock != nil {
+		zmq.close(self._zmq_sock)
+		self._zmq_sock = nil
 	}
 	if self._shared_buffer != nil {
 		res := posix.munmap(raw_data(self._shared_buffer.?._shm), len(self._shared_buffer.?._shm))
