@@ -82,7 +82,7 @@ CvMmapClient :: struct {
 	_is_owned_zmq_ctx: bool,
 	_zmq_sock:         ^zmq.Socket,
 	_shm_fd:           Maybe(posix.FD),
-	_shared_buffer:     Maybe(SharedBuffer),
+	_shared_buffer:    Maybe(SharedBuffer),
 	_has_init:         bool,
 	// task
 	_polling_task:     Maybe(^Thread),
@@ -220,6 +220,13 @@ _get_shared_buffer :: proc(fd: posix.FD) -> (SharedBuffer, CvMmapError) {
 		return image_buffer, ShmError{cast(int)posix.get_errno(), "mmap"}
 	}
 	image_buffer._shm = (cast([^]u8)shm_ptr)[:stat.st_size]
+	// memory layout:
+	// 0 - SHM_PAYLOAD_OFFSET: metadata
+	//    - 8: magic
+	//    - rest: metadata_rel:
+	//      - 4: frame_index
+	//      - rest: frame_info
+	// SHM_PAYLOAD_OFFSET - end: image
 	image_buffer.image = image_buffer._shm[SHM_PAYLOAD_OFFSET:]
 	image_buffer.metadata = image_buffer._shm[:SHM_PAYLOAD_OFFSET]
 	cv_mmap_magic := string(cstring(raw_data(image_buffer.metadata[:CV_MMAP_MAGIC_LEN])))
@@ -283,11 +290,7 @@ _polling_task :: proc(t: ^Thread) {
 		client._shared_buffer = image_buffer
 		if (client.on_frame != nil) {
 			meta_ptr := _metadata(&image_buffer)
-			client.on_frame(
-				meta_ptr^,
-				image_buffer.image,
-				client.user_data,
-			)
+			client.on_frame(meta_ptr^, image_buffer.image, client.user_data)
 		}
 		return true
 	}
@@ -313,11 +316,7 @@ _polling_task :: proc(t: ^Thread) {
 		if (client.on_frame != nil) {
 			assert(client._shared_buffer != nil, "`nil` image buffer")
 			meta_ptr := _metadata(&client._shared_buffer.?)
-			client.on_frame(
-				meta_ptr^,
-				client._shared_buffer.?.image,
-				client.user_data,
-			)
+			client.on_frame(meta_ptr^, client._shared_buffer.?.image, client.user_data)
 		}
 	}
 }
