@@ -52,7 +52,8 @@ FrameInfo :: struct #packed {
 	pixel_format: PixelFormat,
 }
 
-FrameMetadata :: struct #packed {
+// @note: native aligned of C repr
+FrameMetadata :: struct {
 	frame_index: u32,
 	info:        FrameInfo,
 }
@@ -260,6 +261,13 @@ _polling_task :: proc(t: ^Thread) {
 	recv_sync_msg :: proc(skt: ^zmq.Socket) -> (SyncMessage, bool) {
 		sync_msg := SyncMessage{}
 		msg := zmq.Message{}
+		// http://wiki.zeromq.org/results:10gbe-tests
+		// https://zguide.zeromq.org/docs/chapter2/#Messaging-Patterns
+		// 
+		//  We will use these often, but `zmq_recv()` is bad at dealing with
+		//  arbitrary message sizes: it truncates messages to whatever buffer size
+		//  you provide. So there's a second API that works with `zmq_msg_t`
+		//  structures, with a richer but more difficult API
 		data, ok := zmq.recv_msg_bytes(&msg, skt)
 		defer zmq.msg_close(&msg)
 		if !ok {

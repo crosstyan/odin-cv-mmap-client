@@ -47,13 +47,6 @@ gui_main :: proc(instance_name: string) {
 
 	zmq_ctx := zmq.ctx_new()
 	defer zmq.ctx_term(zmq_ctx)
-	// http://wiki.zeromq.org/results:10gbe-tests
-	// https://zguide.zeromq.org/docs/chapter2/#Messaging-Patterns
-	// 
-	//  We will use these often, but `zmq_recv()` is bad at dealing with
-	//  arbitrary message sizes: it truncates messages to whatever buffer size
-	//  you provide. So there's a second API that works with `zmq_msg_t`
-	//  structures, with a richer but more difficult API
 
 	client := cvmmap.create(instance_name, zmq_ctx)
 	log.info("created")
